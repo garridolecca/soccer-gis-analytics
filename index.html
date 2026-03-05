@@ -120,8 +120,8 @@
 
         <calcite-block heading="Visualization Mode" open collapsible>
           <calcite-segmented-control id="viz-mode" width="full">
-            <calcite-segmented-control-item value="events" checked>Events</calcite-segmented-control-item>
-            <calcite-segmented-control-item value="heatmap">Heatmap</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="events">Events</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="heatmap" checked>Heatmap</calcite-segmented-control-item>
             <calcite-segmented-control-item value="passes">Pass Map</calcite-segmented-control-item>
             <calcite-segmented-control-item value="shots">Shot Map</calcite-segmented-control-item>
           </calcite-segmented-control>
@@ -243,6 +243,11 @@
     function pt(x, y) { return new Point({ x: OX + x * SCALE, y: OY + y * SCALE, spatialReference: SR }); }
 
     function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+    // Mirror coordinates for France (StatsBomb has both teams attacking L→R)
+    function mirrorIfFrance(ev, x, y) {
+      return ev.team?.name === "France" ? [120 - x, 80 - y] : [x, y];
+    }
 
     // ── Symbol cache ──
     const SYM = {
@@ -379,7 +384,7 @@
     let allEvents = [];
     let lineups = [];
     let selectedPlayer = null;
-    let currentVizMode = "events";
+    let currentVizMode = "heatmap";
     let currentTeamFilter = "all";
 
     const TYPE_MAP = { "Pass": "pass", "Shot": "shot", "Dribble": "dribble", "Pressure": "tackle", "Tackle": "tackle", "Block": "tackle", "Interception": "tackle", "Ball Recovery": "tackle", "Carry": "carry" };
@@ -644,6 +649,40 @@
       passLinesLayer.addMany(passLines);
       shotLinesLayer.addMany(shotLines);
       carryLinesLayer.addMany(carryLines);
+    }
+
+    // ── Shot Map (mirrors France so shots go to both goals) ──
+    function renderShotMap(shots) {
+      eventsLayer.removeAll();
+      shotLinesLayer.removeAll();
+
+      const pts = [], shotLines = [];
+      for (let i = 0; i < shots.length; i++) {
+        const ev = shots[i];
+        if (!ev.location) continue;
+        const [mx, my] = mirrorIfFrance(ev, ev.location[0], ev.location[1]);
+
+        pts.push(new Graphic({
+          geometry: pt(mx, my),
+          symbol: evSymbol(ev),
+          popupTemplate: {
+            title: `${ev.player?.name} — ${ev.type?.name}`,
+            content: `<b>Team:</b> ${ev.team?.name}<br/><b>Minute:</b> ${ev.minute}'<br/>
+              <b>Shot:</b> ${ev.shot?.outcome?.name || ""}<br/>
+              ${ev.shot?.statsbomb_xg ? "<b>xG:</b> " + ev.shot.statsbomb_xg.toFixed(3) + "<br/>" : ""}`
+          }
+        }));
+
+        if (ev.shot?.end_location) {
+          const [ex, ey] = mirrorIfFrance(ev, ev.shot.end_location[0], ev.shot.end_location[1]);
+          shotLines.push(new Graphic({
+            geometry: new Polyline({ paths: [[px(mx, my), px(ex, ey)]], spatialReference: SR }),
+            symbol: ev.shot?.outcome?.name === "Goal" ? SYM.lineShotGoal : SYM.lineShot
+          }));
+        }
+      }
+      eventsLayer.addMany(pts);
+      shotLinesLayer.addMany(shotLines);
     }
 
     // ── Pass Network (GraphicsLayer — unchanged) ──
@@ -999,7 +1038,7 @@
             passNetworkLayer.visible = true;
             break;
           case "shots":
-            renderEvents(filtered.filter(e => getEventType(e) === "shot"));
+            renderShotMap(filtered.filter(e => getEventType(e) === "shot"));
             eventsLayer.visible = true;
             shotLinesLayer.visible = true;
             break;
@@ -1122,6 +1161,7 @@
         <div style="text-align:center;margin-bottom:12px;">
           <h3 style="margin:0;color:#fff;font-size:16px;">${name}</h3>
           <div style="color:#888;font-size:12px;">${team}</div>
+          <calcite-button id="btn-view-all" appearance="outline" kind="neutral" icon-start="reset" width="full" scale="s" style="margin-top:8px;">View All Players</calcite-button>
         </div>
         <calcite-block heading="Performance" open collapsible>
           <div class="stat-row"><span class="label">Events</span><span class="value">${pe.length}</span></div>
@@ -1141,6 +1181,14 @@
           ${goals.map(g => `<div class="insight-card"><h4>GOAL — ${g.minute}'</h4><p>${g.shot?.technique?.name || ""} ${g.shot?.body_part?.name || ""}</p></div>`).join("")}
           ${shots.filter(s => s.shot?.outcome?.name !== "Goal").slice(0, 3).map(s => `<div class="insight-card"><h4>Shot — ${s.minute}'</h4><p>${s.shot?.outcome?.name} (xG: ${(s.shot?.statsbomb_xg || 0).toFixed(3)})</p></div>`).join("")}
         </calcite-block>`;
+
+      // Wire up "View All Players" button
+      document.getElementById("btn-view-all").addEventListener("click", () => {
+        selectedPlayer = null;
+        document.querySelectorAll(".player-card").forEach(c => c.classList.remove("active"));
+        document.getElementById("detail-panel").collapsed = true;
+        updateVisualization();
+      });
     }
 
     // ── Panel switching ──
