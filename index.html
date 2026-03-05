@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GIS Sports Analytics — 2022 World Cup Final</title>
+
+  <!-- ArcGIS Maps SDK + Calcite (unified CDN) -->
+  <script type="module" src="https://js.arcgis.com/4.32/"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/dark/main.css" />
+  <script type="module" src="https://js.arcgis.com/calcite-components/2.13.2/calcite.esm.js"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/calcite-components/2.13.2/calcite.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: "Avenir Next", "Helvetica Neue", sans-serif; }
+    calcite-shell { --calcite-color-brand: #1a6b3c; }
+    #viewDiv { width: 100%; height: 100%; background: #1a472a; }
+
+    .match-header { text-align: center; padding: 12px 16px; background: linear-gradient(135deg, #75aadb 0%, #1a472a 50%, #002654 100%); border-radius: 8px; margin: 8px; }
+    .match-header h2 { margin: 0 0 4px; font-size: 15px; color: #fff; letter-spacing: 1px; }
+    .match-header .score { font-size: 28px; font-weight: 700; color: #ffd700; margin: 4px 0; }
+    .match-header .subtitle { font-size: 11px; color: #ccc; }
+
+    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+    .stat-row .label { color: #aaa; }
+    .stat-row .value { color: #fff; font-weight: 600; }
+    .stat-row .arg { color: #75aadb; }
+    .stat-row .fra { color: #002654; }
+
+    .player-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.2s; margin: 2px 0; }
+    .player-card:hover { background: rgba(255,255,255,0.08); }
+    .player-card.active { background: rgba(255,215,0,0.15); border-left: 3px solid #ffd700; }
+    .player-card .jersey { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; color: #fff; flex-shrink: 0; }
+    .player-card .jersey.arg-jersey { background: #75aadb; }
+    .player-card .jersey.fra-jersey { background: #002654; }
+    .player-card .info { flex: 1; min-width: 0; }
+    .player-card .info .name { font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .player-card .info .pos { font-size: 10px; color: #888; }
+    .player-card .events-count { font-size: 11px; color: #ffd700; font-weight: 600; }
+
+    .insight-card { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin: 6px 0; border-left: 3px solid #ffd700; }
+    .insight-card h4 { margin: 0 0 4px; font-size: 13px; color: #ffd700; }
+    .insight-card p { margin: 0; font-size: 12px; color: #ccc; line-height: 1.4; }
+
+    .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: #ccc; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+    #loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
+    #loading-overlay h2 { color: #ffd700; margin-bottom: 8px; }
+    #loading-overlay p { color: #aaa; font-size: 14px; }
+
+    .filter-group { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0; }
+
+    .time-control { padding: 8px 16px; background: rgba(0,0,0,0.6); }
+  </style>
+</head>
+
+<body class="calcite-mode-dark">
+  <div id="loading-overlay">
+    <calcite-loader label="Loading match data..." type="indeterminate"></calcite-loader>
+    <h2>Loading Match Data</h2>
+    <p>Fetching StatsBomb open data for the 2022 World Cup Final...</p>
+  </div>
+
+  <calcite-shell>
+    <!-- Header -->
+    <calcite-navigation slot="header">
+      <calcite-navigation-logo
+        slot="logo"
+        heading="GIS Sports Analytics"
+        description="Powered by ArcGIS Maps SDK & StatsBomb Open Data"
+        icon="map"
+      ></calcite-navigation-logo>
+      <calcite-chip slot="content-end" icon="layer" appearance="outline-fill" kind="brand">2022 FIFA World Cup Final</calcite-chip>
+    </calcite-navigation>
+
+    <!-- Left Panel: Match Info & Players -->
+    <calcite-shell-panel slot="panel-start" width-scale="m" position="start">
+      <calcite-action-bar slot="action-bar">
+        <calcite-action icon="information" text="Match Info" data-panel="match-info"></calcite-action>
+        <calcite-action icon="user" text="Players" data-panel="players"></calcite-action>
+        <calcite-action icon="filter" text="Filters" data-panel="filters"></calcite-action>
+        <calcite-action icon="legend" text="Legend" data-panel="legend"></calcite-action>
+      </calcite-action-bar>
+
+      <!-- Match Info Panel -->
+      <calcite-panel id="match-info" heading="Match Information" data-panel-id="match-info">
+        <div class="match-header">
+          <h2>FIFA WORLD CUP 2022 — FINAL</h2>
+          <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
+            <span style="font-size:14px;color:#75aadb;font-weight:600;">Argentina</span>
+            <span class="score">3 — 3</span>
+            <span style="font-size:14px;color:#aac4e8;font-weight:600;">France</span>
+          </div>
+          <div class="subtitle">Argentina wins 4-2 on penalties</div>
+          <div class="subtitle" style="margin-top:4px;">Lusail Stadium, Qatar — Dec 18, 2022</div>
+        </div>
+
+        <calcite-block heading="Match Statistics" open collapsible>
+          <div id="match-stats"></div>
+        </calcite-block>
+
+        <calcite-block heading="Key Insights" open collapsible>
+          <div id="key-insights"></div>
+        </calcite-block>
+      </calcite-panel>
+
+      <!-- Players Panel -->
+      <calcite-panel id="players" heading="Players" hidden data-panel-id="players">
+        <calcite-block heading="Argentina" open collapsible icon-start="users">
+          <div id="arg-players"></div>
+        </calcite-block>
+        <calcite-block heading="France" open collapsible icon-start="users">
+          <div id="fra-players"></div>
+        </calcite-block>
+      </calcite-panel>
+
+      <!-- Filters Panel -->
+      <calcite-panel id="filters" heading="Visualization Filters" hidden data-panel-id="filters">
+        <calcite-block heading="Team" open collapsible>
+          <calcite-label layout="inline">
+            <calcite-segmented-control id="team-filter" width="full">
+              <calcite-segmented-control-item value="all" checked>Both Teams</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="Argentina">Argentina</calcite-segmented-control-item>
+              <calcite-segmented-control-item value="France">France</calcite-segmented-control-item>
+            </calcite-segmented-control>
+          </calcite-label>
+        </calcite-block>
+
+        <calcite-block heading="Event Types" open collapsible>
+          <calcite-label layout="inline">
+            <calcite-switch id="filter-pass" checked></calcite-switch> Passes
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-switch id="filter-shot" checked></calcite-switch> Shots
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-switch id="filter-dribble" checked></calcite-switch> Dribbles
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-switch id="filter-tackle" checked></calcite-switch> Tackles & Pressures
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-switch id="filter-carry" checked></calcite-switch> Ball Carries
+          </calcite-label>
+        </calcite-block>
+
+        <calcite-block heading="Visualization Mode" open collapsible>
+          <calcite-segmented-control id="viz-mode" width="full">
+            <calcite-segmented-control-item value="events" checked>Events</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="heatmap">Heatmap</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="passes">Pass Network</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="shots">Shot Map</calcite-segmented-control-item>
+          </calcite-segmented-control>
+        </calcite-block>
+
+        <calcite-block heading="Match Time (minutes)" open collapsible>
+          <calcite-slider id="time-slider" min="0" max="120" min-value="0" max-value="120"
+            label-handles label-ticks ticks="15" snap step="1"
+            min-label="Start" max-label="End">
+          </calcite-slider>
+        </calcite-block>
+      </calcite-panel>
+
+      <!-- Legend Panel -->
+      <calcite-panel id="legend" heading="Map Legend" hidden data-panel-id="legend">
+        <calcite-block heading="Event Types" open>
+          <div class="legend-item"><div class="legend-dot" style="background:#00e676;"></div> Passes (successful)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff5252;"></div> Passes (failed)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffd740;"></div> Shots</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff6e40;border-radius:2px;"></div> Goals</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#40c4ff;"></div> Dribbles</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ea80fc;"></div> Tackles / Pressures</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#b0bec5;"></div> Ball Carries</div>
+        </calcite-block>
+        <calcite-block heading="Pass Network" open>
+          <div class="legend-item"><div class="legend-dot" style="background:#75aadb;"></div> Argentina passes</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#002654;border:1px solid #aac4e8;"></div> France passes</div>
+          <div style="font-size:11px;color:#888;padding:4px 0;">Line thickness = pass frequency between players</div>
+        </calcite-block>
+        <calcite-block heading="Data Source" open>
+          <div style="font-size:11px;color:#888;line-height:1.5;">
+            StatsBomb Open Data (CC BY-NC-SA 4.0)<br/>
+            Pitch coordinates: 120 x 80 standardized grid<br/>
+            Match ID: 3869685
+          </div>
+        </calcite-block>
+      </calcite-panel>
+    </calcite-shell-panel>
+
+    <!-- Map -->
+    <div id="viewDiv"></div>
+
+    <!-- Right Panel: Player Detail -->
+    <calcite-shell-panel slot="panel-end" width-scale="m" position="end" collapsed id="detail-panel">
+      <calcite-panel heading="Player Analysis" id="player-detail-panel">
+        <calcite-action icon="x" text="Close" slot="header-actions-end" id="close-detail"></calcite-action>
+        <div id="player-detail-content" style="padding:8px;"></div>
+      </calcite-panel>
+    </calcite-shell-panel>
+  </calcite-shell>
+
+  <script type="module">
+    import Map from "https://js.arcgis.com/4.32/@arcgis/core/Map.js";
+    import MapView from "https://js.arcgis.com/4.32/@arcgis/core/views/MapView.js";
+    import GraphicsLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/GraphicsLayer.js";
+    import FeatureLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/FeatureLayer.js";
+    import Graphic from "https://js.arcgis.com/4.32/@arcgis/core/Graphic.js";
+    import Point from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Point.js";
+    import Polyline from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polyline.js";
+    import Polygon from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polygon.js";
+    import Extent from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Extent.js";
+    import SpatialReference from "https://js.arcgis.com/4.32/@arcgis/core/geometry/SpatialReference.js";
+    import HeatmapRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/HeatmapRenderer.js";
+    import SimpleRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/SimpleRenderer.js";
+    import SimpleMarkerSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleMarkerSymbol.js";
+    import SimpleLineSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleLineSymbol.js";
+    import SimpleFillSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleFillSymbol.js";
+    import TextSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/TextSymbol.js";
+    import UniqueValueRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/UniqueValueRenderer.js";
+    import * as reactiveUtils from "https://js.arcgis.com/4.32/@arcgis/core/core/reactiveUtils.js";
+
+    // ── Spatial reference: local coordinate system (meters) ──
+    const SR = new SpatialReference({ wkid: 3857 });
+
+    // Pitch offset so it doesn't sit at 0,0 in Web Mercator (avoids distortion issues)
+    const OX = 0, OY = 0;
+    function pitchPt(x, y) { return new Point({ x: OX + x, y: OY + y, spatialReference: SR }); }
+    function pitchCoords(x, y) { return [OX + x, OY + y]; }
+
+    // ── Layers ──
+    const pitchLayer = new GraphicsLayer({ title: "Pitch" });
+    const eventsLayer = new GraphicsLayer({ title: "Events" });
+    const passLinesLayer = new GraphicsLayer({ title: "Pass Lines" });
+    const shotLinesLayer = new GraphicsLayer({ title: "Shot Lines" });
+    const carryLinesLayer = new GraphicsLayer({ title: "Carry Lines" });
+    const passNetworkLayer = new GraphicsLayer({ title: "Pass Network" });
+    const labelsLayer = new GraphicsLayer({ title: "Labels" });
+
+    let heatmapLayer = null; // built after data load
+
+    // ── Draw pitch ──
+    function drawPitch() {
+      const green = new SimpleFillSymbol({
+        color: [26, 71, 42, 255],
+        outline: { color: [255, 255, 255, 200], width: 2 }
+      });
+      const lightStripe = new SimpleFillSymbol({
+        color: [30, 82, 48, 255],
+        outline: { color: "transparent", width: 0 }
+      });
+      const whiteLine = new SimpleLineSymbol({ color: [255, 255, 255, 180], width: 1.5 });
+      const thinLine = new SimpleLineSymbol({ color: [255, 255, 255, 120], width: 1 });
+
+      // Grass stripes
+      for (let i = 0; i < 12; i++) {
+        const x1 = i * 10, x2 = (i + 1) * 10;
+        const fill = i % 2 === 0 ? green : lightStripe;
+        pitchLayer.add(new Graphic({
+          geometry: new Polygon({
+            rings: [[pitchCoords(x1, 0), pitchCoords(x2, 0), pitchCoords(x2, 80), pitchCoords(x1, 80), pitchCoords(x1, 0)]],
+            spatialReference: SR
+          }),
+          symbol: fill
+        }));
+      }
+
+      // Outline
+      pitchLayer.add(new Graphic({
+        geometry: new Polygon({
+          rings: [[pitchCoords(0, 0), pitchCoords(120, 0), pitchCoords(120, 80), pitchCoords(0, 80), pitchCoords(0, 0)]],
+          spatialReference: SR
+        }),
+        symbol: new SimpleFillSymbol({ color: "transparent", outline: { color: [255, 255, 255, 220], width: 2.5 } })
+      }));
+
+      // Halfway line
+      pitchLayer.add(new Graphic({
+        geometry: new Polyline({ paths: [[pitchCoords(60, 0), pitchCoords(60, 80)]], spatialReference: SR }),
+        symbol: whiteLine
+      }));
+
+      // Center circle
+      const circlePoints = [];
+      for (let a = 0; a <= 360; a += 5) {
+        const rad = (a * Math.PI) / 180;
+        circlePoints.push(pitchCoords(60 + 9.15 * Math.cos(rad), 40 + 9.15 * Math.sin(rad)));
+      }
+      pitchLayer.add(new Graphic({
+        geometry: new Polyline({ paths: [circlePoints], spatialReference: SR }),
+        symbol: whiteLine
+      }));
+
+      // Center spot
+      pitchLayer.add(new Graphic({
+        geometry: pitchPt(60, 40),
+        symbol: new SimpleMarkerSymbol({ color: "white", size: 4, outline: null })
+      }));
+
+      // Penalty areas
+      const penAreas = [
+        [[0, 18], [18, 18], [18, 62], [0, 62], [0, 18]],
+        [[120, 18], [102, 18], [102, 62], [120, 62], [120, 18]]
+      ];
+      penAreas.forEach(coords => {
+        pitchLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [coords.map(c => pitchCoords(c[0], c[1]))], spatialReference: SR }),
+          symbol: whiteLine
+        }));
+      });
+
+      // Goal areas (6-yard box)
+      const goalAreas = [
+        [[0, 30], [6, 30], [6, 50], [0, 50]],
+        [[120, 30], [114, 30], [114, 50], [120, 50]]
+      ];
+      goalAreas.forEach(coords => {
+        pitchLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [coords.map(c => pitchCoords(c[0], c[1]))], spatialReference: SR }),
+          symbol: thinLine
+        }));
+      });
+
+      // Penalty spots
+      [pitchPt(12, 40), pitchPt(108, 40)].forEach(pt => {
+        pitchLayer.add(new Graphic({
+          geometry: pt,
+          symbol: new SimpleMarkerSymbol({ color: "white", size: 3, outline: null })
+        }));
+      });
+
+      // Penalty arcs
+      [[12, 1], [108, -1]].forEach(([cx, dir]) => {
+        const arcPts = [];
+        const startA = dir === 1 ? -53 : 127;
+        const endA = dir === 1 ? 53 : 233;
+        for (let a = startA; a <= endA; a += 3) {
+          const rad = (a * Math.PI) / 180;
+          arcPts.push(pitchCoords(cx + 9.15 * Math.cos(rad), 40 + 9.15 * Math.sin(rad)));
+        }
+        pitchLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [arcPts], spatialReference: SR }),
+          symbol: thinLine
+        }));
+      });
+
+      // Goals (nets)
+      [[0, -2], [120, 122]].forEach(([gx, gx2]) => {
+        const x1 = Math.min(gx, gx2 > 120 ? 122 : gx2);
+        const x2 = Math.max(gx, gx2 > 120 ? 122 : gx2);
+        pitchLayer.add(new Graphic({
+          geometry: new Polyline({
+            paths: [[pitchCoords(gx, 36), pitchCoords(gx2 > 120 ? 122 : -2, 36),
+                     pitchCoords(gx2 > 120 ? 122 : -2, 44), pitchCoords(gx, 44)]],
+            spatialReference: SR
+          }),
+          symbol: new SimpleLineSymbol({ color: [255, 255, 255, 100], width: 2, style: "dash" })
+        }));
+      });
+
+      // Corner arcs
+      [[0, 0, 0, 90], [120, 0, 90, 180], [120, 80, 180, 270], [0, 80, 270, 360]].forEach(([cx, cy, sa, ea]) => {
+        const pts = [];
+        for (let a = sa; a <= ea; a += 5) {
+          const rad = (a * Math.PI) / 180;
+          pts.push(pitchCoords(cx + 1.5 * Math.cos(rad), cy + 1.5 * Math.sin(rad)));
+        }
+        pitchLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [pts], spatialReference: SR }),
+          symbol: thinLine
+        }));
+      });
+
+      // Team labels
+      labelsLayer.add(new Graphic({
+        geometry: pitchPt(30, -3),
+        symbol: new TextSymbol({ text: "ARGENTINA →", color: "#75aadb", font: { size: 11, weight: "bold" }, yoffset: -8 })
+      }));
+      labelsLayer.add(new Graphic({
+        geometry: pitchPt(90, -3),
+        symbol: new TextSymbol({ text: "← FRANCE", color: "#aac4e8", font: { size: 11, weight: "bold" }, yoffset: -8 })
+      }));
+    }
+
+    // ── Data loading ──
+    const EVENTS_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data/events/3869685.json";
+    const LINEUPS_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data/lineups/3869685.json";
+
+    let allEvents = [];
+    let lineups = [];
+    let selectedPlayer = null;
+    let currentVizMode = "events";
+
+    async function loadData() {
+      const [eventsRes, lineupsRes] = await Promise.all([fetch(EVENTS_URL), fetch(LINEUPS_URL)]);
+      allEvents = await eventsRes.json();
+      lineups = await lineupsRes.json();
+    }
+
+    // ── Event processing ──
+    function getEventType(ev) {
+      const t = ev.type?.name;
+      if (t === "Pass") return "pass";
+      if (t === "Shot") return "shot";
+      if (t === "Dribble") return "dribble";
+      if (t === "Pressure" || t === "Tackle" || t === "Block" || t === "Interception") return "tackle";
+      if (t === "Carry") return "carry";
+      if (t === "Ball Recovery") return "tackle";
+      return null;
+    }
+
+    function getEventColor(ev) {
+      const t = getEventType(ev);
+      if (t === "pass") return ev.pass?.outcome?.name ? [255, 82, 82, 200] : [0, 230, 118, 200];
+      if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? [255, 110, 64, 255] : [255, 215, 64, 200];
+      if (t === "dribble") return [64, 196, 255, 200];
+      if (t === "tackle") return [234, 128, 252, 200];
+      if (t === "carry") return [176, 190, 197, 120];
+      return [255, 255, 255, 100];
+    }
+
+    function getEventSize(ev) {
+      const t = getEventType(ev);
+      if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? 14 : 10;
+      if (t === "pass") return 4;
+      if (t === "carry") return 3;
+      return 5;
+    }
+
+    // ── Visualization functions ──
+    function renderEvents(events) {
+      eventsLayer.removeAll();
+      passLinesLayer.removeAll();
+      shotLinesLayer.removeAll();
+      carryLinesLayer.removeAll();
+
+      events.forEach(ev => {
+        if (!ev.location) return;
+        const type = getEventType(ev);
+        if (!type) return;
+
+        const [x, y] = ev.location;
+        const color = getEventColor(ev);
+        const size = getEventSize(ev);
+
+        // Event point
+        eventsLayer.add(new Graphic({
+          geometry: pitchPt(x, y),
+          symbol: new SimpleMarkerSymbol({
+            color,
+            size,
+            outline: type === "shot" && ev.shot?.outcome?.name === "Goal"
+              ? { color: "#fff", width: 2 } : { color: [255, 255, 255, 60], width: 0.5 },
+            style: type === "shot" && ev.shot?.outcome?.name === "Goal" ? "diamond" : "circle"
+          }),
+          attributes: { ...ev, eventType: type },
+          popupTemplate: {
+            title: `${ev.player?.name} — ${ev.type?.name}`,
+            content: `
+              <b>Team:</b> ${ev.team?.name}<br/>
+              <b>Minute:</b> ${ev.minute}'${ev.second ? " " + ev.second + '"' : ""}<br/>
+              <b>Type:</b> ${ev.type?.name}<br/>
+              ${ev.pass?.outcome?.name ? "<b>Pass outcome:</b> " + ev.pass.outcome.name + "<br/>" : ""}
+              ${ev.shot?.outcome?.name ? "<b>Shot outcome:</b> " + ev.shot.outcome.name + "<br/>" : ""}
+              ${ev.shot?.statsbomb_xg ? "<b>xG:</b> " + ev.shot.statsbomb_xg.toFixed(3) + "<br/>" : ""}
+              ${ev.pass?.length ? "<b>Pass length:</b> " + ev.pass.length.toFixed(1) + "m<br/>" : ""}
+            `
+          }
+        }));
+
+        // Pass lines
+        if (type === "pass" && ev.pass?.end_location) {
+          const [ex, ey] = ev.pass.end_location;
+          passLinesLayer.add(new Graphic({
+            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({
+              color: ev.pass?.outcome?.name ? [255, 82, 82, 60] : [0, 230, 118, 40],
+              width: 0.8
+            })
+          }));
+        }
+
+        // Shot lines
+        if (type === "shot" && ev.shot?.end_location) {
+          const [ex, ey] = ev.shot.end_location;
+          shotLinesLayer.add(new Graphic({
+            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({
+              color: ev.shot?.outcome?.name === "Goal" ? [255, 110, 64, 200] : [255, 215, 64, 80],
+              width: ev.shot?.outcome?.name === "Goal" ? 3 : 1.5,
+              style: ev.shot?.outcome?.name === "Goal" ? "solid" : "dash"
+            })
+          }));
+        }
+
+        // Carry lines
+        if (type === "carry" && ev.carry?.end_location) {
+          const [ex, ey] = ev.carry.end_location;
+          carryLinesLayer.add(new Graphic({
+            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({ color: [176, 190, 197, 40], width: 0.6, style: "dot" })
+          }));
+        }
+      });
+    }
+
+    function buildHeatmapLayer(events) {
+      const features = events.filter(e => e.location && getEventType(e)).map((ev, i) => ({
+        geometry: { x: OX + ev.location[0], y: OY + ev.location[1], spatialReference: SR },
+        attributes: { ObjectID: i, team: ev.team?.name, player: ev.player?.name, minute: ev.minute }
+      }));
+
+      if (heatmapLayer) heatmapLayer.destroy();
+
+      heatmapLayer = new FeatureLayer({
+        title: "Heatmap",
+        source: features,
+        objectIdField: "ObjectID",
+        fields: [
+          { name: "ObjectID", type: "oid" },
+          { name: "team", type: "string" },
+          { name: "player", type: "string" },
+          { name: "minute", type: "integer" }
+        ],
+        renderer: new HeatmapRenderer({
+          colorStops: [
+            { color: [26, 71, 42, 0], ratio: 0 },
+            { color: [0, 100, 0, 60], ratio: 0.15 },
+            { color: [255, 255, 0, 120], ratio: 0.4 },
+            { color: [255, 165, 0, 180], ratio: 0.7 },
+            { color: [255, 0, 0, 220], ratio: 1 }
+          ],
+          minDensity: 0,
+          maxDensity: 0.04,
+          radius: 12
+        }),
+        visible: false
+      });
+
+      return heatmapLayer;
+    }
+
+    function renderPassNetwork(events) {
+      passNetworkLayer.removeAll();
+
+      // Group passes by player pair
+      const pairCounts = {};
+      const playerPositions = {};
+
+      events.filter(e => e.type?.name === "Pass" && !e.pass?.outcome?.name && e.location && e.pass?.recipient?.name).forEach(ev => {
+        const from = ev.player.name;
+        const to = ev.pass.recipient.name;
+        const team = ev.team.name;
+        const key = [from, to].sort().join("|||") + "|||" + team;
+
+        pairCounts[key] = (pairCounts[key] || 0) + 1;
+
+        if (!playerPositions[from]) playerPositions[from] = { x: 0, y: 0, count: 0, team };
+        playerPositions[from].x += ev.location[0];
+        playerPositions[from].y += ev.location[1];
+        playerPositions[from].count++;
+
+        if (!playerPositions[to] && ev.pass.end_location) {
+          playerPositions[to] = { x: 0, y: 0, count: 0, team };
+        }
+        if (playerPositions[to] && ev.pass.end_location) {
+          playerPositions[to].x += ev.pass.end_location[0];
+          playerPositions[to].y += ev.pass.end_location[1];
+          playerPositions[to].count++;
+        }
+      });
+
+      // Draw connections
+      Object.entries(pairCounts).forEach(([key, count]) => {
+        if (count < 3) return;
+        const [p1, p2, team] = key.split("|||");
+        const pos1 = playerPositions[p1];
+        const pos2 = playerPositions[p2];
+        if (!pos1 || !pos2 || pos1.count === 0 || pos2.count === 0) return;
+
+        const x1 = pos1.x / pos1.count, y1 = pos1.y / pos1.count;
+        const x2 = pos2.x / pos2.count, y2 = pos2.y / pos2.count;
+
+        const isArg = team === "Argentina";
+        passNetworkLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [[pitchCoords(x1, y1), pitchCoords(x2, y2)]], spatialReference: SR }),
+          symbol: new SimpleLineSymbol({
+            color: isArg ? [117, 170, 219, Math.min(200, 40 + count * 12)] : [0, 38, 84, Math.min(200, 40 + count * 12)],
+            width: Math.min(6, 0.5 + count * 0.4)
+          })
+        }));
+      });
+
+      // Draw avg player positions
+      Object.entries(playerPositions).forEach(([name, pos]) => {
+        if (pos.count === 0) return;
+        const avgX = pos.x / pos.count;
+        const avgY = pos.y / pos.count;
+        const isArg = pos.team === "Argentina";
+        const lastName = name.split(" ").pop();
+
+        passNetworkLayer.add(new Graphic({
+          geometry: pitchPt(avgX, avgY),
+          symbol: new SimpleMarkerSymbol({
+            color: isArg ? [117, 170, 219, 220] : [0, 38, 84, 220],
+            size: Math.min(16, 6 + pos.count * 0.15),
+            outline: { color: "#fff", width: 1.5 }
+          })
+        }));
+        passNetworkLayer.add(new Graphic({
+          geometry: pitchPt(avgX, avgY),
+          symbol: new TextSymbol({
+            text: lastName,
+            color: "#fff",
+            font: { size: 8, weight: "bold" },
+            yoffset: -14,
+            haloColor: "black",
+            haloSize: 1
+          })
+        }));
+      });
+    }
+
+    // ── Filter logic ──
+    function getFilteredEvents() {
+      const teamFilter = document.querySelector("#team-filter calcite-segmented-control-item[checked]")?.value || "all";
+      const showPass = document.getElementById("filter-pass").checked;
+      const showShot = document.getElementById("filter-shot").checked;
+      const showDribble = document.getElementById("filter-dribble").checked;
+      const showTackle = document.getElementById("filter-tackle").checked;
+      const showCarry = document.getElementById("filter-carry").checked;
+      const timeSlider = document.getElementById("time-slider");
+      const minTime = timeSlider.minValue;
+      const maxTime = timeSlider.maxValue;
+
+      return allEvents.filter(ev => {
+        if (!ev.location) return false;
+        const type = getEventType(ev);
+        if (!type) return false;
+
+        if (teamFilter !== "all" && ev.team?.name !== teamFilter) return false;
+        if (selectedPlayer && ev.player?.name !== selectedPlayer) return false;
+
+        if (type === "pass" && !showPass) return false;
+        if (type === "shot" && !showShot) return false;
+        if (type === "dribble" && !showDribble) return false;
+        if (type === "tackle" && !showTackle) return false;
+        if (type === "carry" && !showCarry) return false;
+
+        if (ev.minute < minTime || ev.minute > maxTime) return false;
+
+        return true;
+      });
+    }
+
+    function updateVisualization() {
+      const filtered = getFilteredEvents();
+
+      // Reset layer visibility
+      eventsLayer.visible = false;
+      passLinesLayer.visible = false;
+      shotLinesLayer.visible = false;
+      carryLinesLayer.visible = false;
+      passNetworkLayer.visible = false;
+      if (heatmapLayer) heatmapLayer.visible = false;
+
+      switch (currentVizMode) {
+        case "events":
+          renderEvents(filtered);
+          eventsLayer.visible = true;
+          passLinesLayer.visible = true;
+          carryLinesLayer.visible = true;
+          break;
+        case "heatmap":
+          renderEvents(filtered);
+          if (heatmapLayer) {
+            heatmapLayer.destroy();
+          }
+          heatmapLayer = buildHeatmapLayer(filtered);
+          map.add(heatmapLayer);
+          heatmapLayer.visible = true;
+          break;
+        case "passes":
+          renderPassNetwork(filtered);
+          passNetworkLayer.visible = true;
+          break;
+        case "shots":
+          renderEvents(filtered.filter(e => getEventType(e) === "shot"));
+          eventsLayer.visible = true;
+          shotLinesLayer.visible = true;
+          break;
+      }
+    }
+
+    // ── Statistics ──
+    function computeStats() {
+      const stats = { Argentina: {}, France: {} };
+
+      ["Argentina", "France"].forEach(team => {
+        const teamEvents = allEvents.filter(e => e.team?.name === team);
+        const passes = teamEvents.filter(e => e.type?.name === "Pass");
+        const successPasses = passes.filter(e => !e.pass?.outcome?.name);
+        const shots = teamEvents.filter(e => e.type?.name === "Shot");
+        const goals = shots.filter(e => e.shot?.outcome?.name === "Goal");
+        const dribbles = teamEvents.filter(e => e.type?.name === "Dribble");
+        const successDribbles = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
+        const tackles = teamEvents.filter(e => ["Tackle", "Interception", "Block"].includes(e.type?.name));
+        const pressures = teamEvents.filter(e => e.type?.name === "Pressure");
+        const carries = teamEvents.filter(e => e.type?.name === "Carry");
+        const xg = shots.reduce((sum, e) => sum + (e.shot?.statsbomb_xg || 0), 0);
+
+        stats[team] = {
+          passes: passes.length,
+          passAccuracy: passes.length ? ((successPasses.length / passes.length) * 100).toFixed(0) : 0,
+          shots: shots.length,
+          goals: goals.length,
+          xg: xg.toFixed(2),
+          dribbles: dribbles.length,
+          dribbleSuccess: dribbles.length ? ((successDribbles.length / dribbles.length) * 100).toFixed(0) : 0,
+          tackles: tackles.length,
+          pressures: pressures.length,
+          carries: carries.length,
+          totalDistance: carries.reduce((sum, e) => {
+            if (e.location && e.carry?.end_location) {
+              const dx = e.carry.end_location[0] - e.location[0];
+              const dy = e.carry.end_location[1] - e.location[1];
+              return sum + Math.sqrt(dx * dx + dy * dy);
+            }
+            return sum;
+          }, 0).toFixed(0)
+        };
+      });
+
+      return stats;
+    }
+
+    function renderStats(stats) {
+      const container = document.getElementById("match-stats");
+      const rows = [
+        ["Passes", "passes"],
+        ["Pass Accuracy", "passAccuracy", "%"],
+        ["Shots", "shots"],
+        ["Goals", "goals"],
+        ["Expected Goals (xG)", "xg"],
+        ["Dribbles", "dribbles"],
+        ["Dribble Success", "dribbleSuccess", "%"],
+        ["Tackles/Blocks/Intc.", "tackles"],
+        ["Pressures", "pressures"],
+        ["Ball Carries", "carries"],
+        ["Carry Distance", "totalDistance", "m"]
+      ];
+
+      container.innerHTML = rows.map(([label, key, suffix = ""]) => `
+        <div class="stat-row">
+          <span class="arg">${stats.Argentina[key]}${suffix}</span>
+          <span class="label">${label}</span>
+          <span class="fra">${stats.France[key]}${suffix}</span>
+        </div>
+      `).join("");
+    }
+
+    function generateInsights(stats) {
+      const container = document.getElementById("key-insights");
+      const insights = [];
+
+      // Possession proxy
+      const totalActions = (stats.Argentina.passes + stats.France.passes);
+      const argPoss = ((stats.Argentina.passes / totalActions) * 100).toFixed(0);
+      insights.push({
+        title: "Possession Battle",
+        text: `Argentina dominated possession with ~${argPoss}% of passes (${stats.Argentina.passes} vs ${stats.France.passes}). They controlled the tempo for most of the match.`
+      });
+
+      // xG analysis
+      insights.push({
+        title: "Expected Goals Analysis",
+        text: `Argentina's xG: ${stats.Argentina.xg} | France's xG: ${stats.France.xg}. ${parseFloat(stats.Argentina.xg) > parseFloat(stats.France.xg) ? "Argentina created higher quality chances overall." : "France were more clinical despite having fewer chances."}`
+      });
+
+      // Pressing
+      if (stats.Argentina.pressures > stats.France.pressures) {
+        insights.push({
+          title: "High Press Dominance",
+          text: `Argentina applied ${stats.Argentina.pressures} pressures vs France's ${stats.France.pressures}, demonstrating their aggressive pressing style under Scaloni.`
+        });
+      } else {
+        insights.push({
+          title: "Defensive Intensity",
+          text: `France applied ${stats.France.pressures} pressures vs Argentina's ${stats.Argentina.pressures}, showing their defensive work rate especially in the second half comeback.`
+        });
+      }
+
+      // Key match narrative
+      insights.push({
+        title: "The Greatest Final",
+        text: "Messi scored twice (including in extra time) while Mbappe completed a hat-trick with two goals in 97 seconds. Argentina prevailed 4-2 in the penalty shootout."
+      });
+
+      // GIS insight
+      insights.push({
+        title: "Spatial Analysis — GIS Power",
+        text: "This visualization uses ArcGIS to transform raw event coordinates into spatial intelligence. Heatmaps reveal player zones, pass networks expose tactical structure, and shot maps show xG-weighted chance quality — all powered by geographic information science."
+      });
+
+      container.innerHTML = insights.map(i => `
+        <div class="insight-card">
+          <h4>${i.title}</h4>
+          <p>${i.text}</p>
+        </div>
+      `).join("");
+    }
+
+    // ── Player list ──
+    function renderPlayerList() {
+      const argContainer = document.getElementById("arg-players");
+      const fraContainer = document.getElementById("fra-players");
+
+      lineups.forEach(team => {
+        const isArg = team.team_name === "Argentina";
+        const container = isArg ? argContainer : fraContainer;
+
+        const playerEvents = {};
+        allEvents.filter(e => e.team?.name === team.team_name).forEach(ev => {
+          if (ev.player?.name) {
+            playerEvents[ev.player.name] = (playerEvents[ev.player.name] || 0) + 1;
+          }
+        });
+
+        container.innerHTML = team.lineup.map(p => {
+          const count = playerEvents[p.player_name] || 0;
+          const jersey = p.jersey_number;
+          const pos = p.positions?.[0]?.position || "Unknown";
+          return `
+            <div class="player-card" data-player="${p.player_name}">
+              <div class="jersey ${isArg ? 'arg-jersey' : 'fra-jersey'}">${jersey}</div>
+              <div class="info">
+                <div class="name">${p.player_name}</div>
+                <div class="pos">${pos}</div>
+              </div>
+              <div class="events-count">${count}</div>
+            </div>
+          `;
+        }).join("");
+      });
+
+      // Click handlers
+      document.querySelectorAll(".player-card").forEach(card => {
+        card.addEventListener("click", () => {
+          const name = card.dataset.player;
+          if (selectedPlayer === name) {
+            selectedPlayer = null;
+            document.querySelectorAll(".player-card").forEach(c => c.classList.remove("active"));
+            document.getElementById("detail-panel").collapsed = true;
+          } else {
+            selectedPlayer = name;
+            document.querySelectorAll(".player-card").forEach(c => c.classList.remove("active"));
+            card.classList.add("active");
+            showPlayerDetail(name);
+          }
+          updateVisualization();
+        });
+      });
+    }
+
+    function showPlayerDetail(name) {
+      document.getElementById("detail-panel").collapsed = false;
+      const pEvents = allEvents.filter(e => e.player?.name === name);
+      const team = pEvents[0]?.team?.name || "";
+      const passes = pEvents.filter(e => e.type?.name === "Pass");
+      const successPasses = passes.filter(e => !e.pass?.outcome?.name);
+      const shots = pEvents.filter(e => e.type?.name === "Shot");
+      const goals = shots.filter(e => e.shot?.outcome?.name === "Goal");
+      const xg = shots.reduce((s, e) => s + (e.shot?.statsbomb_xg || 0), 0);
+      const dribbles = pEvents.filter(e => e.type?.name === "Dribble");
+      const successDribbles = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
+      const carries = pEvents.filter(e => e.type?.name === "Carry");
+      const pressures = pEvents.filter(e => e.type?.name === "Pressure");
+
+      const avgX = pEvents.filter(e => e.location).reduce((s, e) => s + e.location[0], 0) / (pEvents.filter(e => e.location).length || 1);
+      const avgY = pEvents.filter(e => e.location).reduce((s, e) => s + e.location[1], 0) / (pEvents.filter(e => e.location).length || 1);
+
+      document.getElementById("player-detail-content").innerHTML = `
+        <div style="text-align:center;margin-bottom:12px;">
+          <div class="jersey ${team === 'Argentina' ? 'arg-jersey' : 'fra-jersey'}" style="width:48px;height:48px;font-size:20px;margin:0 auto 8px;">${pEvents[0]?.player?.name ? '' : ''}</div>
+          <h3 style="margin:0;color:#fff;font-size:16px;">${name}</h3>
+          <div style="color:#888;font-size:12px;">${team}</div>
+        </div>
+
+        <calcite-block heading="Performance Summary" open collapsible>
+          <div class="stat-row"><span class="label">Total Events</span><span class="value">${pEvents.length}</span></div>
+          <div class="stat-row"><span class="label">Passes</span><span class="value">${successPasses.length}/${passes.length} (${passes.length ? ((successPasses.length / passes.length) * 100).toFixed(0) : 0}%)</span></div>
+          <div class="stat-row"><span class="label">Shots</span><span class="value">${shots.length}</span></div>
+          <div class="stat-row"><span class="label">Goals</span><span class="value">${goals.length}</span></div>
+          <div class="stat-row"><span class="label">xG</span><span class="value">${xg.toFixed(3)}</span></div>
+          <div class="stat-row"><span class="label">Dribbles</span><span class="value">${successDribbles.length}/${dribbles.length}</span></div>
+          <div class="stat-row"><span class="label">Pressures</span><span class="value">${pressures.length}</span></div>
+          <div class="stat-row"><span class="label">Carries</span><span class="value">${carries.length}</span></div>
+        </calcite-block>
+
+        <calcite-block heading="Spatial Profile" open collapsible>
+          <div class="stat-row"><span class="label">Avg. Position</span><span class="value">(${avgX.toFixed(1)}, ${avgY.toFixed(1)})</span></div>
+          <div class="stat-row"><span class="label">Zone</span><span class="value">${avgX < 40 ? "Defensive Third" : avgX < 80 ? "Middle Third" : "Attacking Third"}</span></div>
+          <div style="font-size:11px;color:#888;padding:8px 0;">Click "Heatmap" in Filters to see this player's spatial footprint on the pitch.</div>
+        </calcite-block>
+
+        <calcite-block heading="Key Moments" open collapsible>
+          ${goals.map(g => `<div class="insight-card"><h4>GOAL — ${g.minute}'</h4><p>${g.shot?.technique?.name || ""} ${g.shot?.body_part?.name || ""}</p></div>`).join("")}
+          ${shots.filter(s => s.shot?.outcome?.name !== "Goal").slice(0, 3).map(s => `<div class="insight-card"><h4>Shot — ${s.minute}'</h4><p>${s.shot?.outcome?.name} (xG: ${(s.shot?.statsbomb_xg || 0).toFixed(3)})</p></div>`).join("")}
+        </calcite-block>
+      `;
+    }
+
+    // ── Action bar panel switching ──
+    function setupPanelSwitching() {
+      const actions = document.querySelectorAll("calcite-action-bar calcite-action");
+      const panels = document.querySelectorAll("calcite-shell-panel[slot='panel-start'] calcite-panel");
+
+      actions.forEach(action => {
+        action.addEventListener("click", () => {
+          const targetId = action.dataset.panel;
+          panels.forEach(p => p.hidden = p.dataset.panelId !== targetId);
+          actions.forEach(a => a.active = a.dataset.panel === targetId);
+        });
+      });
+
+      // Default: show match info
+      actions[0].active = true;
+    }
+
+    // ── Filter event handlers ──
+    function setupFilters() {
+      document.getElementById("team-filter").addEventListener("calciteSegmentedControlChange", updateVisualization);
+      ["filter-pass", "filter-shot", "filter-dribble", "filter-tackle", "filter-carry"].forEach(id => {
+        document.getElementById(id).addEventListener("calciteSwitchChange", updateVisualization);
+      });
+      document.getElementById("time-slider").addEventListener("calciteSliderChange", updateVisualization);
+
+      document.getElementById("viz-mode").addEventListener("calciteSegmentedControlChange", (e) => {
+        currentVizMode = e.target.querySelector("[checked]")?.value || "events";
+        updateVisualization();
+      });
+
+      document.getElementById("close-detail").addEventListener("click", () => {
+        selectedPlayer = null;
+        document.querySelectorAll(".player-card").forEach(c => c.classList.remove("active"));
+        document.getElementById("detail-panel").collapsed = true;
+        updateVisualization();
+      });
+    }
+
+    // ── Initialize ──
+    const map = new Map({
+      basemap: null,
+      layers: [pitchLayer, carryLinesLayer, passLinesLayer, shotLinesLayer, passNetworkLayer, eventsLayer, labelsLayer]
+    });
+
+    const view = new MapView({
+      container: "viewDiv",
+      map,
+      extent: new Extent({ xmin: OX - 8, ymin: OY - 8, xmax: OX + 128, ymax: OY + 88, spatialReference: SR }),
+      background: { color: [15, 35, 20] },
+      constraints: {
+        rotationEnabled: false,
+        minZoom: 0,
+        maxZoom: 24,
+        geometry: new Extent({ xmin: OX - 15, ymin: OY - 15, xmax: OX + 135, ymax: OY + 95, spatialReference: SR })
+      },
+      ui: { components: [] },
+      navigation: { mouseWheelZoomEnabled: true, browserTouchPanEnabled: true },
+      popup: {
+        dockEnabled: true,
+        dockOptions: { buttonEnabled: false, breakpoint: false, position: "bottom-right" }
+      }
+    });
+
+    // Remove Esri attribution for cleaner look on local demo
+    view.when(() => {
+      const attrib = document.querySelector(".esri-attribution");
+      if (attrib) attrib.style.display = "none";
+    });
+
+    drawPitch();
+
+    (async () => {
+      try {
+        await loadData();
+        const stats = computeStats();
+        renderStats(stats);
+        generateInsights(stats);
+        renderPlayerList();
+        setupPanelSwitching();
+        setupFilters();
+        updateVisualization();
+        document.getElementById("loading-overlay").style.display = "none";
+      } catch (err) {
+        console.error("Failed to load data:", err);
+        document.getElementById("loading-overlay").innerHTML = `
+          <h2 style="color:#ff5252;">Error Loading Data</h2>
+          <p style="color:#ccc;">${err.message}</p>
+          <p style="color:#888;">Make sure you have internet access to fetch StatsBomb open data from GitHub.</p>
+        `;
+      }
+    })();
+  </script>
+</body>
+</html>
