@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GIS Sports Analytics — 2022 World Cup Final</title>
+  <title>GIS Sports Analytics — 2022 World Cup Final (Esri Native)</title>
 
   <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/dark/main.css" />
   <script type="module" src="https://js.arcgis.com/calcite-components/2.13.2/calcite.esm.js"></script>
@@ -59,13 +59,11 @@
   </div>
 
   <calcite-shell>
-    <!-- Header -->
     <calcite-navigation slot="header">
       <calcite-navigation-logo slot="logo" heading="GIS Sports Analytics" description="Powered by ArcGIS Maps SDK & StatsBomb Open Data" icon="map"></calcite-navigation-logo>
       <calcite-chip slot="content-end" icon="layer" appearance="outline-fill" kind="brand">2022 FIFA World Cup Final</calcite-chip>
     </calcite-navigation>
 
-    <!-- Left Panel -->
     <calcite-shell-panel slot="panel-start" width-scale="m" position="start">
       <calcite-action-bar slot="action-bar">
         <calcite-action icon="information" text="Match Info" data-panel="match-info"></calcite-action>
@@ -75,7 +73,6 @@
         <calcite-action icon="legend" text="Legend" data-panel="legend"></calcite-action>
       </calcite-action-bar>
 
-      <!-- Match Info Panel -->
       <calcite-panel id="match-info" heading="Match Information" data-panel-id="match-info">
         <div class="match-header">
           <h2>FIFA WORLD CUP 2022 — FINAL</h2>
@@ -95,7 +92,6 @@
         </calcite-block>
       </calcite-panel>
 
-      <!-- Players Panel -->
       <calcite-panel id="players" heading="Players" hidden data-panel-id="players">
         <calcite-block heading="Argentina" open collapsible icon-start="users">
           <div id="arg-players"></div>
@@ -105,7 +101,6 @@
         </calcite-block>
       </calcite-panel>
 
-      <!-- Filters Panel -->
       <calcite-panel id="filters" heading="Visualization Filters" hidden data-panel-id="filters">
         <calcite-block heading="Team" open collapsible>
           <calcite-segmented-control id="team-filter" width="full">
@@ -120,7 +115,7 @@
           <calcite-label layout="inline"><calcite-switch id="filter-shot" checked></calcite-switch> Shots</calcite-label>
           <calcite-label layout="inline"><calcite-switch id="filter-dribble" checked></calcite-switch> Dribbles</calcite-label>
           <calcite-label layout="inline"><calcite-switch id="filter-tackle" checked></calcite-switch> Tackles & Pressures</calcite-label>
-          <calcite-label layout="inline"><calcite-switch id="filter-carry" checked></calcite-switch> Ball Carries</calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-carry"></calcite-switch> Ball Carries</calcite-label>
         </calcite-block>
 
         <calcite-block heading="Visualization Mode" open collapsible>
@@ -140,31 +135,30 @@
         </calcite-block>
       </calcite-panel>
 
-      <!-- Advanced Spatial Analytics Panel -->
       <calcite-panel id="analytics" heading="Spatial Analytics" hidden data-panel-id="analytics">
-        <calcite-block heading="Territorial Control" description="Voronoi-based zone analysis" open collapsible>
+        <calcite-block heading="Territorial Control" description="Voronoi via geometryEngine" open collapsible>
           <calcite-label layout="inline"><calcite-switch id="toggle-voronoi"></calcite-switch> Show Territorial Zones</calcite-label>
-          <p style="font-size:11px;color:#888;margin:8px 0 0;">Voronoi tessellation partitions the pitch into territories based on average player positions. Each zone represents the area closest to that player — a core GIS technique for spatial dominance analysis.</p>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Voronoi tessellation using <b>geometryEngine.convexHull()</b> and <b>geometryEngine.intersect()</b> to partition the pitch into player territories clipped to pitch bounds.</p>
         </calcite-block>
 
-        <calcite-block heading="Team Shape (Convex Hull)" description="Formation boundary analysis" open collapsible>
+        <calcite-block heading="Team Shape (Convex Hull)" description="geometryEngine.convexHull()" open collapsible>
           <calcite-label layout="inline"><calcite-switch id="toggle-hull"></calcite-switch> Show Team Shapes</calcite-label>
-          <p style="font-size:11px;color:#888;margin:8px 0 0;">Convex hulls compute the smallest polygon enclosing all player positions — revealing team compactness, defensive blocks, and attacking width. GIS convex hull is used in ecology, urban planning, and now sports.</p>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Native Esri <b>geometryEngine.convexHull()</b> computes the smallest polygon enclosing all player positions with <b>geometryEngine.planarArea()</b> for area measurement.</p>
         </calcite-block>
 
-        <calcite-block heading="Pressure Zones (KDE)" description="Kernel density estimation" open collapsible>
+        <calcite-block heading="Pressure Zones (KDE)" description="Esri HeatmapRenderer" open collapsible>
           <calcite-label layout="inline"><calcite-switch id="toggle-pressure-zones"></calcite-switch> Show Defensive Pressure</calcite-label>
-          <p style="font-size:11px;color:#888;margin:8px 0 0;">Kernel Density Estimation (KDE) transforms discrete pressure events into a continuous surface, identifying high-pressure corridors and defensive traps — the same technique used in crime hotspot analysis.</p>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">GPU-accelerated <b>HeatmapRenderer</b> on a FeatureLayer transforms discrete pressure events into a continuous density surface — no manual KDE computation needed.</p>
         </calcite-block>
 
-        <calcite-block heading="Spatial Clustering (DBSCAN)" description="Event cluster detection" open collapsible>
+        <calcite-block heading="Event Clusters" description="Esri FeatureLayer featureReduction" open collapsible>
           <calcite-label layout="inline"><calcite-switch id="toggle-clusters"></calcite-switch> Show Action Clusters</calcite-label>
-          <p style="font-size:11px;color:#888;margin:8px 0 0;">DBSCAN (Density-Based Spatial Clustering) groups events by spatial proximity without predefined zones. Identifies organic hotspots of activity — used in epidemiology, logistics, and spatial data mining.</p>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Native Esri <b>featureReduction</b> clustering groups events by spatial proximity using GPU-accelerated rendering. Replaces custom DBSCAN with Esri's built-in cluster engine.</p>
         </calcite-block>
 
-        <calcite-block heading="Directional Analysis" description="Pass direction rose diagram" open collapsible>
+        <calcite-block heading="Directional Analysis" description="Pass direction flow arrows" open collapsible>
           <calcite-label layout="inline"><calcite-switch id="toggle-direction"></calcite-switch> Show Pass Directions</calcite-label>
-          <p style="font-size:11px;color:#888;margin:8px 0 0;">Directional flow arrows show aggregate passing vectors across pitch zones. This GIS technique (flow mapping) reveals tactical tendencies — build-up play patterns, wing preference, and counter-attack corridors.</p>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Directional flow arrows show aggregate passing vectors across pitch zones, revealing tactical tendencies and build-up patterns.</p>
         </calcite-block>
 
         <calcite-block heading="Spatial Insights" open collapsible>
@@ -172,7 +166,6 @@
         </calcite-block>
       </calcite-panel>
 
-      <!-- Legend Panel -->
       <calcite-panel id="legend" heading="Map Legend" hidden data-panel-id="legend">
         <calcite-block heading="Event Types" open>
           <div class="legend-item"><div class="legend-dot" style="background:#00e676;"></div> Passes (successful)</div>
@@ -188,8 +181,18 @@
           <div class="legend-item"><div class="legend-dot" style="background:rgba(170,196,232,0.25);border:1px solid #aac4e8;"></div> France territory (Voronoi)</div>
           <div class="legend-item"><div class="legend-dot" style="background:rgba(117,170,219,0.15);border:2px dashed #75aadb;"></div> Argentina shape (Hull)</div>
           <div class="legend-item"><div class="legend-dot" style="background:rgba(170,196,232,0.15);border:2px dashed #aac4e8;"></div> France shape (Hull)</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#ff6e40;"></div> Action clusters (DBSCAN)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff6e40;"></div> Action clusters</div>
           <div class="legend-item"><div class="legend-dot" style="background:#40c4ff;width:20px;border-radius:2px;height:3px;"></div> Pass flow arrows</div>
+        </calcite-block>
+        <calcite-block heading="Esri APIs Used" open>
+          <div style="font-size:11px;color:#888;line-height:1.5;">
+            geometryEngine.convexHull()<br/>
+            geometryEngine.intersect()<br/>
+            geometryEngine.planarArea()<br/>
+            HeatmapRenderer (GPU)<br/>
+            FeatureLayer.featureReduction (GPU)<br/>
+            FeatureLayer (client-side source)
+          </div>
         </calcite-block>
         <calcite-block heading="Data Source" open>
           <div style="font-size:11px;color:#888;line-height:1.5;">
@@ -201,10 +204,8 @@
       </calcite-panel>
     </calcite-shell-panel>
 
-    <!-- Map -->
     <div id="viewDiv"></div>
 
-    <!-- Right Panel: Player Detail -->
     <calcite-shell-panel slot="panel-end" width-scale="m" position="end" collapsed id="detail-panel">
       <calcite-panel heading="Player Analysis" id="player-detail-panel">
         <calcite-action icon="x" text="Close" slot="header-actions-end" id="close-detail"></calcite-action>
@@ -214,18 +215,24 @@
   </calcite-shell>
 
   <script type="module">
+    // ── ArcGIS Imports (including Esri-native spatial analysis modules) ──
     import Map from "https://js.arcgis.com/4.32/@arcgis/core/Map.js";
     import MapView from "https://js.arcgis.com/4.32/@arcgis/core/views/MapView.js";
     import GraphicsLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/GraphicsLayer.js";
+    import FeatureLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/FeatureLayer.js";
     import Graphic from "https://js.arcgis.com/4.32/@arcgis/core/Graphic.js";
     import Point from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Point.js";
+    import Multipoint from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Multipoint.js";
     import Polyline from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polyline.js";
     import Polygon from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polygon.js";
     import Extent from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Extent.js";
     import SpatialReference from "https://js.arcgis.com/4.32/@arcgis/core/geometry/SpatialReference.js";
+    import * as geometryEngine from "https://js.arcgis.com/4.32/@arcgis/core/geometry/geometryEngine.js";
     import SimpleMarkerSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleMarkerSymbol.js";
     import SimpleLineSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleLineSymbol.js";
     import SimpleFillSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleFillSymbol.js";
+    import SimpleRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/SimpleRenderer.js";
+    import HeatmapRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/HeatmapRenderer.js";
     import TextSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/TextSymbol.js";
 
     // ── Coordinate helpers ──
@@ -235,10 +242,9 @@
     function px(x, y) { return [OX + x * SCALE, OY + y * SCALE]; }
     function pt(x, y) { return new Point({ x: OX + x * SCALE, y: OY + y * SCALE, spatialReference: SR }); }
 
-    // ── Performance: debounce helper ──
     function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
-    // ── Performance: pre-built symbol cache ──
+    // ── Symbol cache ──
     const SYM = {
       passOk:    new SimpleMarkerSymbol({ color: [0, 230, 118, 200], size: 4, outline: { color: [255,255,255,60], width: 0.5 } }),
       passFail:  new SimpleMarkerSymbol({ color: [255, 82, 82, 200], size: 4, outline: { color: [255,255,255,60], width: 0.5 } }),
@@ -251,8 +257,7 @@
       linePassFail: new SimpleLineSymbol({ color: [255, 82, 82, 50], width: 0.8 }),
       lineShotGoal: new SimpleLineSymbol({ color: [255, 110, 64, 220], width: 3 }),
       lineShot:     new SimpleLineSymbol({ color: [255, 215, 64, 80], width: 1.5, style: "dash" }),
-      lineCarry:    new SimpleLineSymbol({ color: [176, 190, 197, 35], width: 0.6, style: "dot" }),
-      transparent:  new SimpleFillSymbol({ color: "transparent", outline: { color: "transparent", width: 0 } })
+      lineCarry:    new SimpleLineSymbol({ color: [176, 190, 197, 35], width: 0.6, style: "dot" })
     };
 
     function evSymbol(ev) {
@@ -265,7 +270,7 @@
       return SYM.carry;
     }
 
-    // ── Layers ──
+    // ── Graphics Layers (for lines and overlays) ──
     const pitchLayer = new GraphicsLayer({ title: "Pitch" });
     const eventsLayer = new GraphicsLayer({ title: "Events" });
     const passLinesLayer = new GraphicsLayer({ title: "Pass Lines" });
@@ -273,13 +278,30 @@
     const carryLinesLayer = new GraphicsLayer({ title: "Carry Lines" });
     const passNetworkLayer = new GraphicsLayer({ title: "Pass Network" });
     const labelsLayer = new GraphicsLayer({ title: "Labels" });
-    // Advanced analytics layers
     const voronoiLayer = new GraphicsLayer({ title: "Voronoi Territories", visible: false });
     const hullLayer = new GraphicsLayer({ title: "Convex Hulls", visible: false });
-    const pressureZoneLayer = new GraphicsLayer({ title: "Pressure Zones", visible: false });
-    const clusterLayer = new GraphicsLayer({ title: "DBSCAN Clusters", visible: false });
     const directionLayer = new GraphicsLayer({ title: "Pass Directions", visible: false });
 
+    // ── Esri FeatureLayers (created after data load) ──
+    let heatmapFL = null;      // HeatmapRenderer for heatmap mode
+    let pressureFL = null;     // HeatmapRenderer for pressure zones toggle
+    let clusterFL = null;      // featureReduction for cluster toggle
+
+    // Shared field definitions
+    const COMMON_FIELDS = [
+      { name: "ObjectID", type: "oid" },
+      { name: "eventType", type: "string" },
+      { name: "team", type: "string" },
+      { name: "player", type: "string" },
+      { name: "minute", type: "integer" },
+      { name: "weight", type: "double" }
+    ];
+
+    const PRESSURE_FIELDS = [
+      { name: "ObjectID", type: "oid" },
+      { name: "team", type: "string" },
+      { name: "minute", type: "integer" }
+    ];
 
     // ── Draw pitch ──
     function drawPitch() {
@@ -288,7 +310,6 @@
       const whiteLine = new SimpleLineSymbol({ color: [255, 255, 255, 180], width: 1.5 });
       const thinLine = new SimpleLineSymbol({ color: [255, 255, 255, 120], width: 1 });
 
-      // Grass stripes
       for (let i = 0; i < 12; i++) {
         const x1 = i * 10, x2 = (i + 1) * 10;
         pitchLayer.add(new Graphic({
@@ -297,27 +318,21 @@
         }));
       }
 
-      // Outline
       pitchLayer.add(new Graphic({
         geometry: new Polygon({ rings: [[px(0, 0), px(120, 0), px(120, 80), px(0, 80), px(0, 0)]], spatialReference: SR }),
         symbol: new SimpleFillSymbol({ color: "transparent", outline: { color: [255, 255, 255, 220], width: 2.5 } })
       }));
 
-      // Halfway line
       pitchLayer.add(new Graphic({
         geometry: new Polyline({ paths: [[px(60, 0), px(60, 80)]], spatialReference: SR }),
         symbol: whiteLine
       }));
 
-      // Center circle
       const circle = [];
       for (let a = 0; a <= 360; a += 5) { const r = (a * Math.PI) / 180; circle.push(px(60 + 9.15 * Math.cos(r), 40 + 9.15 * Math.sin(r))); }
       pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [circle], spatialReference: SR }), symbol: whiteLine }));
-
-      // Center spot
       pitchLayer.add(new Graphic({ geometry: pt(60, 40), symbol: new SimpleMarkerSymbol({ color: "white", size: 4, outline: null }) }));
 
-      // Penalty areas
       [[0, 18, 18, 62], [102, 18, 120, 62]].forEach(([x1, y1, x2, y2]) => {
         pitchLayer.add(new Graphic({
           geometry: new Polyline({ paths: [[px(x1, y1), px(x2, y1), px(x2, y2), px(x1, y2)]], spatialReference: SR }),
@@ -325,7 +340,6 @@
         }));
       });
 
-      // Goal areas
       [[0, 30, 6, 50], [114, 30, 120, 50]].forEach(([x1, y1, x2, y2]) => {
         pitchLayer.add(new Graphic({
           geometry: new Polyline({ paths: [[px(x1, y1), px(x2, y1), px(x2, y2), px(x1, y2)]], spatialReference: SR }),
@@ -333,7 +347,6 @@
         }));
       });
 
-      // Penalty spots & arcs
       [pt(12, 40), pt(108, 40)].forEach(p => pitchLayer.add(new Graphic({ geometry: p, symbol: new SimpleMarkerSymbol({ color: "white", size: 3, outline: null }) })));
 
       [[12, 1, -53, 53], [108, -1, 127, 233]].forEach(([cx, dir, sa, ea]) => {
@@ -342,7 +355,6 @@
         pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [arc], spatialReference: SR }), symbol: thinLine }));
       });
 
-      // Goals
       [[-2, 36, -2, 44, 0], [122, 36, 122, 44, 120]].forEach(([gx, y1, gx2, y2, edge]) => {
         pitchLayer.add(new Graphic({
           geometry: new Polyline({ paths: [[px(edge, y1), px(gx, y1), px(gx2, y2), px(edge, y2)]], spatialReference: SR }),
@@ -350,14 +362,12 @@
         }));
       });
 
-      // Corner arcs
       [[0, 0, 0, 90], [120, 0, 90, 180], [120, 80, 180, 270], [0, 80, 270, 360]].forEach(([cx, cy, sa, ea]) => {
         const pts = [];
         for (let a = sa; a <= ea; a += 5) { const r = (a * Math.PI) / 180; pts.push(px(cx + 1.5 * Math.cos(r), cy + 1.5 * Math.sin(r))); }
         pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [pts], spatialReference: SR }), symbol: thinLine }));
       });
 
-      // Labels
       labelsLayer.add(new Graphic({ geometry: pt(30, -3), symbol: new TextSymbol({ text: "ARGENTINA  \u2192", color: "#75aadb", font: { size: 11, weight: "bold" }, yoffset: -8 }) }));
       labelsLayer.add(new Graphic({ geometry: pt(90, -3), symbol: new TextSymbol({ text: "\u2190  FRANCE", color: "#aac4e8", font: { size: 11, weight: "bold" }, yoffset: -8 }) }));
     }
@@ -372,21 +382,16 @@
     let currentVizMode = "events";
     let currentTeamFilter = "all";
 
-    // Pre-computed type map for O(1) lookups instead of repeated string comparisons
     const TYPE_MAP = { "Pass": "pass", "Shot": "shot", "Dribble": "dribble", "Pressure": "tackle", "Tackle": "tackle", "Block": "tackle", "Interception": "tackle", "Ball Recovery": "tackle", "Carry": "carry" };
-
-    // Pre-indexed events (populated after load)
     let eventTypeCache = new WeakMap();
 
     async function loadData() {
       const [evR, liR] = await Promise.all([fetch(EVENTS_URL), fetch(LINEUPS_URL)]);
       allEvents = await evR.json();
       lineups = await liR.json();
-      // Pre-compute event types once
       for (let i = 0; i < allEvents.length; i++) {
         const ev = allEvents[i];
-        const t = TYPE_MAP[ev.type?.name] || null;
-        eventTypeCache.set(ev, t);
+        eventTypeCache.set(ev, TYPE_MAP[ev.type?.name] || null);
       }
     }
 
@@ -394,7 +399,197 @@
       return eventTypeCache.get(ev) ?? (TYPE_MAP[ev.type?.name] || null);
     }
 
-    // ── Rendering (optimized: batch addMany + cached symbols) ──
+    // ══════════════════════════════════════════════════
+    //  ESRI FEATURELAYERS — Created once after data load
+    // ══════════════════════════════════════════════════
+
+    function createFeatureLayers() {
+      const allFeatures = [];
+      const pressureFeatures = [];
+      const clusterFeatures = [];
+      let oid = 0, pOid = 0, cOid = 0;
+
+      for (let i = 0; i < allEvents.length; i++) {
+        const ev = allEvents[i];
+        if (!ev.location) continue;
+        const type = getEventType(ev);
+        if (!type) continue;
+
+        const geom = pt(ev.location[0], ev.location[1]);
+        const team = ev.team?.name || "";
+        const player = ev.player?.name || "";
+        const minute = ev.minute || 0;
+        const weight = type === "shot" ? 5 : type === "tackle" ? 2 : 1;
+
+        allFeatures.push(new Graphic({
+          geometry: geom,
+          attributes: { ObjectID: oid++, eventType: type, team, player, minute, weight }
+        }));
+
+        // Pressure/tackle/recovery for pressure heatmap
+        if (ev.type?.name === "Pressure" || ev.type?.name === "Tackle" || ev.type?.name === "Ball Recovery") {
+          pressureFeatures.push(new Graphic({
+            geometry: geom,
+            attributes: { ObjectID: pOid++, team, minute }
+          }));
+        }
+
+        // Non-carry events for clustering
+        if (type !== "carry") {
+          clusterFeatures.push(new Graphic({
+            geometry: geom,
+            attributes: { ObjectID: cOid++, eventType: type, team, player, minute, weight }
+          }));
+        }
+      }
+
+      // ── Heatmap FeatureLayer (GPU-accelerated HeatmapRenderer) ──
+      heatmapFL = new FeatureLayer({
+        title: "Heatmap",
+        source: allFeatures,
+        objectIdField: "ObjectID",
+        geometryType: "point",
+        spatialReference: SR,
+        fields: COMMON_FIELDS,
+        visible: false,
+        renderer: new HeatmapRenderer({
+          field: "weight",
+          colorStops: [
+            { color: [20, 20, 120, 0], ratio: 0 },
+            { color: [20, 100, 255, 100], ratio: 0.15 },
+            { color: [0, 230, 118, 160], ratio: 0.35 },
+            { color: [255, 235, 0, 200], ratio: 0.55 },
+            { color: [255, 140, 0, 230], ratio: 0.75 },
+            { color: [255, 50, 50, 255], ratio: 1 }
+          ],
+          radius: 18,
+          maxDensity: 0.0045,
+          minDensity: 0
+        })
+      });
+
+      // ── Pressure Zones FeatureLayer (GPU-accelerated HeatmapRenderer) ──
+      pressureFL = new FeatureLayer({
+        title: "Pressure Zones",
+        source: pressureFeatures,
+        objectIdField: "ObjectID",
+        geometryType: "point",
+        spatialReference: SR,
+        fields: PRESSURE_FIELDS,
+        visible: false,
+        renderer: new HeatmapRenderer({
+          colorStops: [
+            { color: [0, 0, 0, 0], ratio: 0 },
+            { color: [255, 200, 0, 50], ratio: 0.2 },
+            { color: [255, 140, 0, 110], ratio: 0.45 },
+            { color: [255, 50, 0, 170], ratio: 0.7 },
+            { color: [180, 0, 0, 220], ratio: 1 }
+          ],
+          radius: 22,
+          maxDensity: 0.006,
+          minDensity: 0
+        })
+      });
+
+      // ── Cluster FeatureLayer (Esri featureReduction) ──
+      clusterFL = new FeatureLayer({
+        title: "Event Clusters",
+        source: clusterFeatures,
+        objectIdField: "ObjectID",
+        geometryType: "point",
+        spatialReference: SR,
+        fields: COMMON_FIELDS,
+        visible: false,
+        renderer: new SimpleRenderer({
+          symbol: new SimpleMarkerSymbol({
+            color: [255, 110, 64, 160],
+            size: 4,
+            outline: { color: [255, 255, 255, 60], width: 0.5 }
+          })
+        }),
+        featureReduction: {
+          type: "cluster",
+          clusterRadius: "50px",
+          clusterMinSize: "20px",
+          clusterMaxSize: "50px",
+          symbol: new SimpleMarkerSymbol({
+            style: "circle",
+            color: [255, 110, 64, 100],
+            outline: { color: [255, 110, 64, 200], width: 2.5 }
+          }),
+          labelingInfo: [{
+            deconflictionStrategy: "none",
+            labelExpressionInfo: { expression: "Text($feature.cluster_count, '#,###')" },
+            symbol: {
+              type: "text",
+              color: "#fff",
+              font: { size: 11, weight: "bold" },
+              haloColor: [0, 0, 0, 200],
+              haloSize: 1.5
+            },
+            labelPlacement: "center-center"
+          }]
+        }
+      });
+
+      // Add to map (order matters for layering)
+      map.addMany([heatmapFL, pressureFL, clusterFL]);
+      // Reorder: heatmap and pressure below events, clusters above
+      map.reorder(heatmapFL, map.layers.indexOf(pitchLayer) + 1);
+      map.reorder(pressureFL, map.layers.indexOf(heatmapFL) + 1);
+      map.reorder(clusterFL, map.layers.indexOf(eventsLayer) + 1);
+    }
+
+    // ── FeatureLayer filter expression builder ──
+    function buildFilterExpression(includeEventTypes = true) {
+      const parts = [];
+      if (currentTeamFilter !== "all") parts.push(`team = '${currentTeamFilter}'`);
+      if (selectedPlayer) parts.push(`player = '${selectedPlayer}'`);
+
+      const slider = document.getElementById("time-slider");
+      const minT = slider.minValue, maxT = slider.maxValue;
+      if (minT > 0) parts.push(`minute >= ${minT}`);
+      if (maxT < 125) parts.push(`minute <= ${maxT}`);
+
+      if (includeEventTypes) {
+        const types = [];
+        if (document.getElementById("filter-pass").checked) types.push("'pass'");
+        if (document.getElementById("filter-shot").checked) types.push("'shot'");
+        if (document.getElementById("filter-dribble").checked) types.push("'dribble'");
+        if (document.getElementById("filter-tackle").checked) types.push("'tackle'");
+        if (document.getElementById("filter-carry").checked) types.push("'carry'");
+        if (types.length > 0 && types.length < 5) {
+          parts.push(`eventType IN (${types.join(",")})`);
+        }
+      }
+
+      return parts.length > 0 ? parts.join(" AND ") : "1=1";
+    }
+
+    function updateFeatureLayerFilters() {
+      const fullExpr = buildFilterExpression(true);
+      const noTypeExpr = buildFilterExpression(false);
+      if (heatmapFL) heatmapFL.definitionExpression = fullExpr;
+      if (pressureFL) pressureFL.definitionExpression = noTypeExpr;
+      // Cluster: filter by team/player/time but exclude carry (already excluded from source)
+      const clusterTypes = [];
+      if (document.getElementById("filter-pass").checked) clusterTypes.push("'pass'");
+      if (document.getElementById("filter-shot").checked) clusterTypes.push("'shot'");
+      if (document.getElementById("filter-dribble").checked) clusterTypes.push("'dribble'");
+      if (document.getElementById("filter-tackle").checked) clusterTypes.push("'tackle'");
+      const clusterParts = [];
+      if (currentTeamFilter !== "all") clusterParts.push(`team = '${currentTeamFilter}'`);
+      if (selectedPlayer) clusterParts.push(`player = '${selectedPlayer}'`);
+      const slider = document.getElementById("time-slider");
+      if (slider.minValue > 0) clusterParts.push(`minute >= ${slider.minValue}`);
+      if (slider.maxValue < 125) clusterParts.push(`minute <= ${slider.maxValue}`);
+      if (clusterTypes.length > 0 && clusterTypes.length < 4) {
+        clusterParts.push(`eventType IN (${clusterTypes.join(",")})`);
+      }
+      if (clusterFL) clusterFL.definitionExpression = clusterParts.length > 0 ? clusterParts.join(" AND ") : "1=1";
+    }
+
+    // ── Event rendering (GraphicsLayer — for events/shots modes) ──
     function renderEvents(events) {
       eventsLayer.removeAll();
       passLinesLayer.removeAll();
@@ -431,10 +626,9 @@
         }
         if (type === "shot" && ev.shot?.end_location) {
           const [ex, ey] = ev.shot.end_location;
-          const isGoal = ev.shot?.outcome?.name === "Goal";
           shotLines.push(new Graphic({
             geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
-            symbol: isGoal ? SYM.lineShotGoal : SYM.lineShot
+            symbol: ev.shot?.outcome?.name === "Goal" ? SYM.lineShotGoal : SYM.lineShot
           }));
         }
         if (type === "carry" && ev.carry?.end_location) {
@@ -446,111 +640,25 @@
         }
       }
 
-      // Batch add — single render cycle per layer instead of thousands
       eventsLayer.addMany(pts);
       passLinesLayer.addMany(passLines);
       shotLinesLayer.addMany(shotLines);
       carryLinesLayer.addMany(carryLines);
     }
 
-    // ── Heatmap (Canvas-based KDE — same proven technique as pressure zones) ──
-    const heatmapGraphicsLayer = new GraphicsLayer({ title: "Heatmap", visible: false });
-
-    // Pre-compute color LUT for heatmap (256 entries)
-    const HEAT_LUT = new Array(256);
-    for (let i = 0; i < 256; i++) {
-      const ratio = i / 255;
-      let r, g, b;
-      if (ratio < 0.25) { const t = ratio / 0.25; r = 20; g = 20 + t * 100 | 0; b = 120 + t * 135 | 0; }
-      else if (ratio < 0.5) { const t = (ratio - 0.25) / 0.25; r = t * 255 | 0; g = 120 + t * 135 | 0; b = 255 * (1 - t) | 0; }
-      else if (ratio < 0.75) { const t = (ratio - 0.5) / 0.25; r = 255; g = 255 * (1 - t * 0.4) | 0; b = 0; }
-      else { const t = (ratio - 0.75) / 0.25; r = 255; g = 153 * (1 - t) | 0; b = t * 60 | 0; }
-      HEAT_LUT[i] = [r, g, b, 80 + (ratio * 175 | 0)];
-    }
-
-    function renderHeatmap(events) {
-      heatmapGraphicsLayer.removeAll();
-      const evts = events.filter(e => e.location && getEventType(e));
-      if (evts.length === 0) return;
-
-      const GRID = 3, BW = 8, BW2x2 = 2 * BW * BW, CUTOFF = BW * 3;
-      // Pre-bin events into spatial grid for O(1) neighbor lookup
-      const BIN = 10; // bin size
-      const bins = {};
-      for (let i = 0, len = evts.length; i < len; i++) {
-        const ev = evts[i];
-        const bx = ev.location[0] / BIN | 0, by = ev.location[1] / BIN | 0;
-        const key = bx * 100 + by;
-        if (!bins[key]) bins[key] = [];
-        const t = getEventType(ev);
-        bins[key].push({ x: ev.location[0], y: ev.location[1], w: t === "shot" ? 5 : t === "tackle" ? 2 : 1 });
-      }
-
-      const gridCells = [];
-      let maxD = 0;
-      const half = GRID / 2;
-      const binRadius = Math.ceil(CUTOFF / BIN);
-
-      for (let gx = 0; gx <= 120; gx += GRID) {
-        const gbx = gx / BIN | 0;
-        for (let gy = 0; gy <= 80; gy += GRID) {
-          let density = 0;
-          const gby = gy / BIN | 0;
-          // Only check nearby bins
-          for (let bx = gbx - binRadius; bx <= gbx + binRadius; bx++) {
-            for (let by = gby - binRadius; by <= gby + binRadius; by++) {
-              const bin = bins[bx * 100 + by];
-              if (!bin) continue;
-              for (let j = 0, blen = bin.length; j < blen; j++) {
-                const p = bin[j];
-                const dx = gx - p.x, dy = gy - p.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < CUTOFF * CUTOFF) density += p.w * Math.exp(-d2 / BW2x2);
-              }
-            }
-          }
-          if (density > 0) gridCells.push(gx, gy, density);
-          if (density > maxD) maxD = density;
-        }
-      }
-
-      if (maxD === 0) return;
-      const invMax = 255 / maxD;
-      const graphics = [];
-
-      for (let i = 0, len = gridCells.length; i < len; i += 3) {
-        const x = gridCells[i], y = gridCells[i + 1], d = gridCells[i + 2];
-        const idx = Math.min(255, d * invMax | 0);
-        if (idx < 8) continue; // skip near-zero
-        const c = HEAT_LUT[idx];
-
-        graphics.push(new Graphic({
-          geometry: new Polygon({
-            rings: [[px(x - half, y - half), px(x + half, y - half), px(x + half, y + half), px(x - half, y + half), px(x - half, y - half)]],
-            spatialReference: SR
-          }),
-          symbol: new SimpleFillSymbol({ color: c, outline: { color: "transparent", width: 0 } })
-        }));
-      }
-
-      heatmapGraphicsLayer.addMany(graphics);
-    }
-
-    // ── Pass Network (optimized: addMany) ──
+    // ── Pass Network (GraphicsLayer — unchanged) ──
     function renderPassNetwork(events) {
       passNetworkLayer.removeAll();
       const pairCounts = {}, playerPos = {};
-
       const passes = events.filter(e => e.type?.name === "Pass" && !e.pass?.outcome?.name && e.location && e.pass?.recipient?.name);
+
       for (let i = 0, len = passes.length; i < len; i++) {
         const ev = passes[i];
         const from = ev.player.name, to = ev.pass.recipient.name, team = ev.team.name;
         const key = from < to ? from + "|||" + to + "|||" + team : to + "|||" + from + "|||" + team;
         pairCounts[key] = (pairCounts[key] || 0) + 1;
-
         if (!playerPos[from]) playerPos[from] = { x: 0, y: 0, n: 0, team };
         playerPos[from].x += ev.location[0]; playerPos[from].y += ev.location[1]; playerPos[from].n++;
-
         if (!playerPos[to] && ev.pass.end_location) playerPos[to] = { x: 0, y: 0, n: 0, team };
         if (playerPos[to] && ev.pass.end_location) {
           playerPos[to].x += ev.pass.end_location[0]; playerPos[to].y += ev.pass.end_location[1]; playerPos[to].n++;
@@ -593,9 +701,9 @@
       passNetworkLayer.addMany(graphics);
     }
 
-    // ═══════════════════════════════════════════════
-    //  ADVANCED SPATIAL ANALYTICS
-    // ═══════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
+    //  ESRI-NATIVE SPATIAL ANALYTICS
+    // ══════════════════════════════════════════════════════
 
     function getPlayerAvgPositions(events) {
       const pos = {};
@@ -611,17 +719,30 @@
       return result;
     }
 
-    // ── Voronoi Tessellation (optimized: coarser grid + addMany) ──
+    // Pitch bounds polygon for clipping
+    const PITCH_BOUNDS = new Polygon({
+      rings: [[px(0, 0), px(120, 0), px(120, 80), px(0, 80), px(0, 0)]],
+      spatialReference: SR
+    });
+
+    // ── Voronoi Tessellation (geometryEngine.convexHull + intersect) ──
     function computeVoronoi(players) {
       voronoiLayer.removeAll();
       const GRID = 3;
-      const cells = {};
       const pLen = players.length;
+      if (pLen === 0) return;
+
       // Pre-extract coords for tight loop
       const pxArr = new Float64Array(pLen), pyArr = new Float64Array(pLen);
       const pTeams = [];
-      for (let i = 0; i < pLen; i++) { pxArr[i] = players[i].x; pyArr[i] = players[i].y; pTeams[i] = players[i].team; cells[i] = []; }
+      const cells = {};
+      for (let i = 0; i < pLen; i++) {
+        pxArr[i] = players[i].x; pyArr[i] = players[i].y;
+        pTeams[i] = players[i].team;
+        cells[i] = [];
+      }
 
+      // Assign grid cells to nearest player
       for (let gx = 0; gx <= 120; gx += GRID) {
         for (let gy = 0; gy <= 80; gy += GRID) {
           let minD = Infinity, nearest = 0;
@@ -637,43 +758,33 @@
       const graphics = [];
       Object.entries(cells).forEach(([idx, points]) => {
         if (points.length < 3) return;
-        const hull = convexHull(points);
-        if (hull.length < 3) return;
+
+        // Esri geometryEngine.convexHull on Multipoint
+        const mp = new Multipoint({
+          points: points.map(([x, y]) => px(x, y)),
+          spatialReference: SR
+        });
+        let hull = geometryEngine.convexHull(mp);
+        if (!hull || hull.type !== "polygon") return;
+
+        // Clip to pitch bounds with geometryEngine.intersect
+        hull = geometryEngine.intersect(hull, PITCH_BOUNDS);
+        if (!hull) return;
+
         const isArg = pTeams[idx] === "Argentina";
-        const ring = hull.map(([x, y]) => px(x, y));
-        ring.push(ring[0]);
         graphics.push(new Graphic({
-          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
+          geometry: hull,
           symbol: new SimpleFillSymbol({
             color: isArg ? [117, 170, 219, 30] : [170, 196, 232, 30],
             outline: { color: isArg ? [117, 170, 219, 120] : [170, 196, 232, 120], width: 1, style: "dot" }
           })
         }));
       });
+
       voronoiLayer.addMany(graphics);
     }
 
-    // ── Convex Hull (Graham scan) ──
-    function convexHull(points) {
-      if (points.length < 3) return points;
-      const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-
-      function cross(O, A, B) { return (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]); }
-
-      const lower = [];
-      for (const p of pts) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-        lower.push(p);
-      }
-      const upper = [];
-      for (let i = pts.length - 1; i >= 0; i--) {
-        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pts[i]) <= 0) upper.pop();
-        upper.push(pts[i]);
-      }
-      upper.pop(); lower.pop();
-      return lower.concat(upper);
-    }
-
+    // ── Team Shape — Esri geometryEngine.convexHull + planarArea ──
     function computeTeamHulls(events) {
       hullLayer.removeAll();
       const players = getPlayerAvgPositions(events);
@@ -682,182 +793,44 @@
       ["Argentina", "France"].forEach(team => {
         const teamPlayers = players.filter(p => p.team === team);
         if (teamPlayers.length < 3) return;
-        const hull = convexHull(teamPlayers.map(p => [p.x, p.y]));
-        if (hull.length < 3) return;
-        const isArg = team === "Argentina";
-        const ring = hull.map(([x, y]) => px(x, y)); ring.push(ring[0]);
 
+        // Native Esri convex hull via Multipoint
+        const mp = new Multipoint({
+          points: teamPlayers.map(p => px(p.x, p.y)),
+          spatialReference: SR
+        });
+        const hullGeom = geometryEngine.convexHull(mp);
+        if (!hullGeom || hullGeom.type !== "polygon") return;
+
+        const isArg = team === "Argentina";
         graphics.push(new Graphic({
-          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
+          geometry: hullGeom,
           symbol: new SimpleFillSymbol({
             color: isArg ? [117, 170, 219, 20] : [170, 196, 232, 20],
             outline: { color: isArg ? [117, 170, 219, 200] : [170, 196, 232, 200], width: 2.5, style: "dash" }
           })
         }));
 
-        const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
-        const cy = hull.reduce((s, p) => s + p[1], 0) / hull.length;
-        let area = 0;
-        for (let i = 0; i < hull.length; i++) { const j = (i + 1) % hull.length; area += hull[i][0] * hull[j][1] - hull[j][0] * hull[i][1]; }
-        area = Math.abs(area) / 2;
+        // Esri geometryEngine.planarArea for area measurement
+        const areaSqM = Math.abs(geometryEngine.planarArea(hullGeom, "square-meters"));
+        const areaUnits = (areaSqM / (SCALE * SCALE)).toFixed(0);
+        const centroid = hullGeom.centroid;
 
         graphics.push(new Graphic({
-          geometry: pt(cx, cy),
-          symbol: new TextSymbol({ text: `${team}\n${area.toFixed(0)} sq units`, color: isArg ? "#75aadb" : "#aac4e8", font: { size: 10, weight: "bold" }, haloColor: "#000", haloSize: 1.5 })
+          geometry: centroid,
+          symbol: new TextSymbol({
+            text: `${team}\n${areaUnits} sq units`,
+            color: isArg ? "#75aadb" : "#aac4e8",
+            font: { size: 10, weight: "bold" },
+            haloColor: "#000", haloSize: 1.5
+          })
         }));
       });
+
       hullLayer.addMany(graphics);
     }
 
-    // ── Pressure Zones (optimized KDE + addMany) ──
-    function computePressureZones(events) {
-      pressureZoneLayer.removeAll();
-      const pressures = events.filter(e => (e.type?.name === "Pressure" || e.type?.name === "Tackle" || e.type?.name === "Ball Recovery") && e.location);
-      if (pressures.length === 0) return;
-
-      const GRID = 4, BW = 8, BW2x2 = 2 * BW * BW, CUT = BW * 3, half = GRID / 2;
-      // Spatial bins for fast lookup
-      const BIN = 10, bins = {};
-      for (let i = 0; i < pressures.length; i++) {
-        const loc = pressures[i].location;
-        const key = (loc[0] / BIN | 0) * 100 + (loc[1] / BIN | 0);
-        if (!bins[key]) bins[key] = [];
-        bins[key].push(loc);
-      }
-      const binR = Math.ceil(CUT / BIN);
-
-      const cells = [];
-      let maxD = 0;
-      for (let gx = 0; gx <= 120; gx += GRID) {
-        const gbx = gx / BIN | 0;
-        for (let gy = 0; gy <= 80; gy += GRID) {
-          let d = 0;
-          const gby = gy / BIN | 0;
-          for (let bx = gbx - binR; bx <= gbx + binR; bx++) {
-            for (let by = gby - binR; by <= gby + binR; by++) {
-              const bin = bins[bx * 100 + by];
-              if (!bin) continue;
-              for (let j = 0; j < bin.length; j++) {
-                const dx = gx - bin[j][0], dy = gy - bin[j][1], d2 = dx * dx + dy * dy;
-                if (d2 < CUT * CUT) d += Math.exp(-d2 / BW2x2);
-              }
-            }
-          }
-          if (d > 0) cells.push(gx, gy, d);
-          if (d > maxD) maxD = d;
-        }
-      }
-
-      if (maxD === 0) return;
-      const graphics = [];
-      for (let i = 0; i < cells.length; i += 3) {
-        const x = cells[i], y = cells[i + 1], ratio = cells[i + 2] / maxD;
-        if (ratio < 0.15) continue;
-        graphics.push(new Graphic({
-          geometry: new Polygon({
-            rings: [[px(x - half, y - half), px(x + half, y - half), px(x + half, y + half), px(x - half, y + half), px(x - half, y - half)]],
-            spatialReference: SR
-          }),
-          symbol: new SimpleFillSymbol({
-            color: [255 * ratio | 0, 100 * (1 - ratio) | 0, 0, ratio * 150 | 0],
-            outline: { color: "transparent", width: 0 }
-          })
-        }));
-      }
-      pressureZoneLayer.addMany(graphics);
-    }
-
-    // ── DBSCAN Clustering (optimized: squared distance, grid index) ──
-    function dbscan(points, eps, minPts) {
-      const n = points.length, eps2 = eps * eps;
-      const labels = new Int16Array(n); // 0 = unvisited, -1 = noise, >0 = cluster
-      let clusterId = 0;
-
-      // Grid spatial index
-      const grid = {}, cellSize = eps;
-      for (let i = 0; i < n; i++) {
-        const cx = points[i][0] / cellSize | 0, cy = points[i][1] / cellSize | 0;
-        const key = cx * 1000 + cy;
-        if (!grid[key]) grid[key] = [];
-        grid[key].push(i);
-      }
-
-      function regionQuery(idx) {
-        const neighbors = [];
-        const px0 = points[idx][0], py0 = points[idx][1];
-        const cx = px0 / cellSize | 0, cy = py0 / cellSize | 0;
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dy = -1; dy <= 1; dy++) {
-            const cell = grid[(cx + dx) * 1000 + (cy + dy)];
-            if (!cell) continue;
-            for (let j = 0; j < cell.length; j++) {
-              const i = cell[j];
-              if (i === idx) continue;
-              const ddx = px0 - points[i][0], ddy = py0 - points[i][1];
-              if (ddx * ddx + ddy * ddy <= eps2) neighbors.push(i);
-            }
-          }
-        }
-        return neighbors;
-      }
-
-      for (let i = 0; i < n; i++) {
-        if (labels[i] !== 0) continue;
-        const neighbors = regionQuery(i);
-        if (neighbors.length < minPts) { labels[i] = -1; continue; }
-        clusterId++;
-        labels[i] = clusterId;
-        const queue = neighbors.slice();
-        let qi = 0;
-        while (qi < queue.length) {
-          const q = queue[qi++];
-          if (labels[q] === -1) labels[q] = clusterId;
-          if (labels[q] !== 0) continue;
-          labels[q] = clusterId;
-          const qN = regionQuery(q);
-          if (qN.length >= minPts) { for (let k = 0; k < qN.length; k++) queue.push(qN[k]); }
-        }
-      }
-      return { labels, numClusters: clusterId };
-    }
-
-    function computeClusters(events) {
-      clusterLayer.removeAll();
-      const evts = events.filter(e => e.location && getEventType(e) && getEventType(e) !== "carry");
-      if (evts.length === 0) return;
-
-      const sampled = evts.length > 500 ? evts.filter((_, i) => i % Math.ceil(evts.length / 500) === 0) : evts;
-      const points = sampled.map(e => [e.location[0], e.location[1]]);
-      const { labels, numClusters } = dbscan(points, 8, 5);
-
-      const clusterColors = [[255,110,64],[64,196,255],[255,215,64],[0,230,118],[234,128,252],[255,82,82],[100,255,218],[255,171,64]];
-      const graphics = [];
-
-      for (let c = 1; c <= numClusters; c++) {
-        const clusterPts = points.filter((_, i) => labels[i] === c);
-        if (clusterPts.length < 3) continue;
-        const hull = convexHull(clusterPts);
-        if (hull.length < 3) continue;
-
-        const color = clusterColors[(c - 1) % clusterColors.length];
-        const ring = hull.map(([x, y]) => px(x, y)); ring.push(ring[0]);
-
-        graphics.push(new Graphic({
-          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
-          symbol: new SimpleFillSymbol({ color: [...color, 40], outline: { color: [...color, 180], width: 2 } })
-        }));
-
-        const cx = clusterPts.reduce((s, p) => s + p[0], 0) / clusterPts.length;
-        const cy = clusterPts.reduce((s, p) => s + p[1], 0) / clusterPts.length;
-        graphics.push(new Graphic({
-          geometry: pt(cx, cy),
-          symbol: new TextSymbol({ text: `C${c} (${clusterPts.length})`, color, font: { size: 10, weight: "bold" }, haloColor: "#000", haloSize: 1.5 })
-        }));
-      }
-      clusterLayer.addMany(graphics);
-    }
-
-    // ── Directional Flow Analysis (optimized: addMany) ──
+    // ── Directional Flow Analysis (custom computation, Esri rendering) ──
     function computeDirectionalFlow(events) {
       directionLayer.removeAll();
       const passes = events.filter(e => e.type?.name === "Pass" && e.location && e.pass?.end_location && !e.pass?.outcome?.name);
@@ -910,13 +883,12 @@
       directionLayer.addMany(graphics);
     }
 
-    // ── Generate spatial insights ──
+    // ── Spatial insights ──
     function generateSpatialInsights(events) {
       const container = document.getElementById("spatial-insights");
       const players = getPlayerAvgPositions(events);
       const insights = [];
 
-      // Team compactness
       ["Argentina", "France"].forEach(team => {
         const tp = players.filter(p => p.team === team);
         if (tp.length < 3) return;
@@ -929,70 +901,44 @@
         });
       });
 
-      // High press zone
       const argPressures = events.filter(e => e.team?.name === "Argentina" && e.type?.name === "Pressure" && e.location);
       const fraPressures = events.filter(e => e.team?.name === "France" && e.type?.name === "Pressure" && e.location);
       if (argPressures.length > 0) {
         const avgX = argPressures.reduce((s, e) => s + e.location[0], 0) / argPressures.length;
-        insights.push({
-          title: "Argentina Press Line",
-          text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press — winning ball in opponent's half." : "Mid/low block pressing strategy."}`
-        });
+        insights.push({ title: "Argentina Press Line", text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press." : "Mid/low block."}` });
       }
       if (fraPressures.length > 0) {
         const avgX = fraPressures.reduce((s, e) => s + (120 - e.location[0]), 0) / fraPressures.length;
-        insights.push({
-          title: "France Press Line",
-          text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press strategy." : "Sat deep and absorbed pressure."}`
-        });
+        insights.push({ title: "France Press Line", text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press." : "Sat deep and absorbed pressure."}` });
       }
 
-      // Pass direction bias
       const argPasses = events.filter(e => e.team?.name === "Argentina" && e.type?.name === "Pass" && e.location && e.pass?.end_location);
       if (argPasses.length > 0) {
         const fwd = argPasses.filter(e => e.pass.end_location[0] > e.location[0]).length;
         const pct = ((fwd / argPasses.length) * 100).toFixed(0);
-        insights.push({
-          title: "Directional Tendency",
-          text: `Argentina played ${pct}% of passes forward. ${pct > 50 ? "Aggressive, progressive passing approach." : "Patient build-up with backward recycling."}`
-        });
+        insights.push({ title: "Directional Tendency", text: `Argentina played ${pct}% of passes forward. ${pct > 50 ? "Aggressive, progressive passing." : "Patient build-up."}` });
       }
 
-      // Nearest neighbor analysis
-      const allWithLoc = events.filter(e => e.location && e.type?.name === "Shot");
-      if (allWithLoc.length >= 2) {
+      const shots = events.filter(e => e.location && e.type?.name === "Shot");
+      if (shots.length >= 2) {
         let totalNN = 0;
-        allWithLoc.forEach((e1, i) => {
+        shots.forEach((e1, i) => {
           let minD = Infinity;
-          allWithLoc.forEach((e2, j) => {
+          shots.forEach((e2, j) => {
             if (i === j) return;
             const dx = e1.location[0] - e2.location[0], dy = e1.location[1] - e2.location[1];
             minD = Math.min(minD, Math.sqrt(dx * dx + dy * dy));
           });
           totalNN += minD;
         });
-        const avgNN = totalNN / allWithLoc.length;
-        insights.push({
-          title: "Shot Clustering (Nearest Neighbor)",
-          text: `Average nearest-neighbor distance between shots: ${avgNN.toFixed(1)} units. ${avgNN < 10 ? "Shots are highly clustered — indicating clear attacking zones." : "Shots are dispersed — attacks came from varied positions."}`
-        });
+        const avgNN = totalNN / shots.length;
+        insights.push({ title: "Shot Clustering (NN)", text: `Avg nearest-neighbor: ${avgNN.toFixed(1)} units. ${avgNN < 10 ? "Highly clustered." : "Dispersed."}` });
       }
 
-      container.innerHTML = insights.map(i => `
-        <div class="insight-card spatial"><h4>${i.title}</h4><p>${i.text}</p></div>
-      `).join("");
+      container.innerHTML = insights.map(i => `<div class="insight-card spatial"><h4>${i.title}</h4><p>${i.text}</p></div>`).join("");
     }
 
-    // ── Filter logic (FIXED) ──
-    function getTeamFilterValue() {
-      const ctrl = document.getElementById("team-filter");
-      const selected = ctrl.selectedItems;
-      if (selected && selected.length > 0) return selected[0].value;
-      // Fallback: check for checked attribute
-      const checked = ctrl.querySelector("[checked]");
-      return checked?.value || "all";
-    }
-
+    // ── Filter logic ──
     function getFilteredEvents() {
       const teamFilter = currentTeamFilter;
       const showPass = document.getElementById("filter-pass").checked;
@@ -1025,24 +971,28 @@
       _vizRAF = requestAnimationFrame(() => {
         const filtered = getFilteredEvents();
 
-        // Hide all viz layers first
+        // Update FeatureLayer filters (definitionExpression)
+        updateFeatureLayerFilters();
+
+        // Hide all viz layers
         eventsLayer.visible = false;
         passLinesLayer.visible = false;
         shotLinesLayer.visible = false;
         carryLinesLayer.visible = false;
         passNetworkLayer.visible = false;
-        heatmapGraphicsLayer.visible = false;
+        if (heatmapFL) heatmapFL.visible = false;
 
         switch (currentVizMode) {
           case "events":
             renderEvents(filtered);
             eventsLayer.visible = true;
             passLinesLayer.visible = true;
-            carryLinesLayer.visible = true;
+            // Carry lines only visible if carry filter is on
+            carryLinesLayer.visible = document.getElementById("filter-carry").checked;
             break;
           case "heatmap":
-            renderHeatmap(filtered);
-            heatmapGraphicsLayer.visible = true;
+            // GPU-accelerated Esri HeatmapRenderer
+            if (heatmapFL) heatmapFL.visible = true;
             break;
           case "passes":
             renderPassNetwork(filtered);
@@ -1055,21 +1005,19 @@
             break;
         }
 
-        // Defer analytics to next frame so main viz appears first
-        const hasAnalytics = voronoiLayer.visible || hullLayer.visible || pressureZoneLayer.visible || clusterLayer.visible || directionLayer.visible;
-        if (hasAnalytics) {
-          requestAnimationFrame(() => updateAnalytics(filtered));
+        // Update analytics overlays if visible
+        const hasVoronoi = voronoiLayer.visible;
+        const hasHull = hullLayer.visible;
+        const hasDirection = directionLayer.visible;
+        if (hasVoronoi || hasHull || hasDirection) {
+          requestAnimationFrame(() => {
+            const src = filtered.length > 0 ? filtered : allEvents;
+            if (hasVoronoi) computeVoronoi(getPlayerAvgPositions(src));
+            if (hasHull) computeTeamHulls(src);
+            if (hasDirection) computeDirectionalFlow(src);
+          });
         }
       });
-    }
-
-    function updateAnalytics(filtered) {
-      const players = getPlayerAvgPositions(filtered.length > 0 ? filtered : allEvents);
-      if (voronoiLayer.visible) computeVoronoi(players);
-      if (hullLayer.visible) computeTeamHulls(filtered.length > 0 ? filtered : allEvents);
-      if (pressureZoneLayer.visible) computePressureZones(filtered.length > 0 ? filtered : allEvents);
-      if (clusterLayer.visible) computeClusters(filtered.length > 0 ? filtered : allEvents);
-      if (directionLayer.visible) computeDirectionalFlow(filtered.length > 0 ? filtered : allEvents);
     }
 
     // ── Statistics ──
@@ -1106,7 +1054,6 @@
       const rows = [["Passes", "passes"], ["Pass Accuracy", "passAccuracy", "%"], ["Shots", "shots"], ["Goals", "goals"],
         ["Expected Goals (xG)", "xg"], ["Dribbles", "dribbles"], ["Dribble Success", "dribbleSuccess", "%"],
         ["Tackles/Blocks/Intc.", "tackles"], ["Pressures", "pressures"], ["Ball Carries", "carries"], ["Carry Distance", "totalDistance", "m"]];
-
       document.getElementById("match-stats").innerHTML = rows.map(([label, key, sfx = ""]) =>
         `<div class="stat-row"><span class="arg">${stats.Argentina[key]}${sfx}</span><span class="label">${label}</span><span class="fra">${stats.France[key]}${sfx}</span></div>`
       ).join("");
@@ -1119,7 +1066,7 @@
         { title: "Possession Battle", text: `Argentina dominated with ~${argP}% of passes (${stats.Argentina.passes} vs ${stats.France.passes}).` },
         { title: "Expected Goals", text: `Argentina xG: ${stats.Argentina.xg} | France xG: ${stats.France.xg}. ${parseFloat(stats.Argentina.xg) > parseFloat(stats.France.xg) ? "Argentina created higher quality chances." : "France more clinical."}` },
         { title: "The Greatest Final", text: "Messi scored twice, Mbappe completed a hat-trick (2 goals in 97 seconds). Argentina won 4-2 on penalties." },
-        { title: "GIS Power", text: "ArcGIS transforms raw coordinates into spatial intelligence: heatmaps, Voronoi territories, DBSCAN clusters, KDE pressure zones, and directional flow — the same techniques used in urban planning and environmental science." }
+        { title: "Esri-Native Analytics", text: "This version uses geometryEngine.convexHull(), HeatmapRenderer (GPU), and FeatureLayer.featureReduction for spatial analytics — replacing custom JS implementations with Esri's native C++/GPU pipeline." }
       ];
       document.getElementById("key-insights").innerHTML = insights.map(i => `<div class="insight-card"><h4>${i.title}</h4><p>${i.text}</p></div>`).join("");
     }
@@ -1210,12 +1157,10 @@
       actions[0].active = true;
     }
 
-    // ── Filter handlers (FIXED) ──
+    // ── Filter handlers ──
     function setupFilters() {
-      // Team filter — use .value property which is always reliable
       document.getElementById("team-filter").addEventListener("calciteSegmentedControlChange", (e) => {
         currentTeamFilter = e.target.value || "all";
-        console.log("Team filter changed to:", currentTeamFilter);
         updateVisualization();
       });
 
@@ -1223,14 +1168,12 @@
         document.getElementById(id).addEventListener("calciteSwitchChange", () => updateVisualization());
       });
 
-      // Debounce slider — fires rapidly during drag
       const debouncedUpdate = debounce(updateVisualization, 150);
       document.getElementById("time-slider").addEventListener("calciteSliderInput", debouncedUpdate);
       document.getElementById("time-slider").addEventListener("calciteSliderChange", () => updateVisualization());
 
       document.getElementById("viz-mode").addEventListener("calciteSegmentedControlChange", (e) => {
         currentVizMode = e.target.value || "events";
-        console.log("Viz mode changed to:", currentVizMode);
         updateVisualization();
       });
 
@@ -1242,35 +1185,47 @@
       });
 
       // Analytics toggles
-      const analyticsToggles = [
-        ["toggle-voronoi", voronoiLayer],
-        ["toggle-hull", hullLayer],
-        ["toggle-pressure-zones", pressureZoneLayer],
-        ["toggle-clusters", clusterLayer],
-        ["toggle-direction", directionLayer]
-      ];
+      // Voronoi, Hull, Direction: GraphicsLayer visibility + compute
+      document.getElementById("toggle-voronoi").addEventListener("calciteSwitchChange", (e) => {
+        voronoiLayer.visible = e.target.checked;
+        if (e.target.checked) {
+          const filtered = getFilteredEvents();
+          computeVoronoi(getPlayerAvgPositions(filtered.length > 0 ? filtered : allEvents));
+        }
+      });
 
-      analyticsToggles.forEach(([id, layer]) => {
-        document.getElementById(id).addEventListener("calciteSwitchChange", (e) => {
-          layer.visible = e.target.checked;
-          if (e.target.checked) {
-            const filtered = getFilteredEvents();
-            const players = getPlayerAvgPositions(filtered.length > 0 ? filtered : allEvents);
-            if (id === "toggle-voronoi") computeVoronoi(players);
-            if (id === "toggle-hull") computeTeamHulls(filtered.length > 0 ? filtered : allEvents);
-            if (id === "toggle-pressure-zones") computePressureZones(filtered.length > 0 ? filtered : allEvents);
-            if (id === "toggle-clusters") computeClusters(filtered.length > 0 ? filtered : allEvents);
-            if (id === "toggle-direction") computeDirectionalFlow(filtered.length > 0 ? filtered : allEvents);
-          }
-        });
+      document.getElementById("toggle-hull").addEventListener("calciteSwitchChange", (e) => {
+        hullLayer.visible = e.target.checked;
+        if (e.target.checked) {
+          const filtered = getFilteredEvents();
+          computeTeamHulls(filtered.length > 0 ? filtered : allEvents);
+        }
+      });
+
+      document.getElementById("toggle-direction").addEventListener("calciteSwitchChange", (e) => {
+        directionLayer.visible = e.target.checked;
+        if (e.target.checked) {
+          const filtered = getFilteredEvents();
+          computeDirectionalFlow(filtered.length > 0 ? filtered : allEvents);
+        }
+      });
+
+      // Pressure Zones: Esri HeatmapRenderer FeatureLayer
+      document.getElementById("toggle-pressure-zones").addEventListener("calciteSwitchChange", (e) => {
+        if (pressureFL) pressureFL.visible = e.target.checked;
+      });
+
+      // Clusters: Esri featureReduction FeatureLayer
+      document.getElementById("toggle-clusters").addEventListener("calciteSwitchChange", (e) => {
+        if (clusterFL) clusterFL.visible = e.target.checked;
       });
     }
 
     // ── Map Init ──
     const map = new Map({
       basemap: null,
-      layers: [pitchLayer, voronoiLayer, pressureZoneLayer, hullLayer, heatmapGraphicsLayer, carryLinesLayer, passLinesLayer, shotLinesLayer,
-               passNetworkLayer, clusterLayer, directionLayer, eventsLayer, labelsLayer]
+      layers: [pitchLayer, voronoiLayer, hullLayer, carryLinesLayer, passLinesLayer, shotLinesLayer,
+               passNetworkLayer, directionLayer, eventsLayer, labelsLayer]
     });
 
     const view = new MapView({
@@ -1304,6 +1259,10 @@
     (async () => {
       try {
         await loadData();
+
+        // Create Esri FeatureLayers (heatmap, pressure, clusters)
+        createFeatureLayers();
+
         const stats = computeStats();
         renderStats(stats);
         generateInsights(stats);
