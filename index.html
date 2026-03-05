@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GIS Sports Analytics — 2022 World Cup Final</title>
 
-  <!-- ArcGIS Maps SDK + Calcite (unified CDN) -->
-  <script type="module" src="https://js.arcgis.com/4.32/"></script>
   <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/dark/main.css" />
   <script type="module" src="https://js.arcgis.com/calcite-components/2.13.2/calcite.esm.js"></script>
   <link rel="stylesheet" href="https://js.arcgis.com/calcite-components/2.13.2/calcite.css" />
@@ -22,10 +20,10 @@
     .match-header .subtitle { font-size: 11px; color: #ccc; }
 
     .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
-    .stat-row .label { color: #aaa; }
+    .stat-row .label { color: #aaa; flex: 1; text-align: center; }
     .stat-row .value { color: #fff; font-weight: 600; }
-    .stat-row .arg { color: #75aadb; }
-    .stat-row .fra { color: #002654; }
+    .stat-row .arg { color: #75aadb; min-width: 50px; text-align: left; }
+    .stat-row .fra { color: #aac4e8; min-width: 50px; text-align: right; }
 
     .player-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.2s; margin: 2px 0; }
     .player-card:hover { background: rgba(255,255,255,0.08); }
@@ -41,6 +39,8 @@
     .insight-card { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin: 6px 0; border-left: 3px solid #ffd700; }
     .insight-card h4 { margin: 0 0 4px; font-size: 13px; color: #ffd700; }
     .insight-card p { margin: 0; font-size: 12px; color: #ccc; line-height: 1.4; }
+    .insight-card.spatial { border-left-color: #40c4ff; }
+    .insight-card.spatial h4 { color: #40c4ff; }
 
     .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: #ccc; }
     .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
@@ -48,10 +48,6 @@
     #loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; }
     #loading-overlay h2 { color: #ffd700; margin-bottom: 8px; }
     #loading-overlay p { color: #aaa; font-size: 14px; }
-
-    .filter-group { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0; }
-
-    .time-control { padding: 8px 16px; background: rgba(0,0,0,0.6); }
   </style>
 </head>
 
@@ -65,21 +61,17 @@
   <calcite-shell>
     <!-- Header -->
     <calcite-navigation slot="header">
-      <calcite-navigation-logo
-        slot="logo"
-        heading="GIS Sports Analytics"
-        description="Powered by ArcGIS Maps SDK & StatsBomb Open Data"
-        icon="map"
-      ></calcite-navigation-logo>
+      <calcite-navigation-logo slot="logo" heading="GIS Sports Analytics" description="Powered by ArcGIS Maps SDK & StatsBomb Open Data" icon="map"></calcite-navigation-logo>
       <calcite-chip slot="content-end" icon="layer" appearance="outline-fill" kind="brand">2022 FIFA World Cup Final</calcite-chip>
     </calcite-navigation>
 
-    <!-- Left Panel: Match Info & Players -->
+    <!-- Left Panel -->
     <calcite-shell-panel slot="panel-start" width-scale="m" position="start">
       <calcite-action-bar slot="action-bar">
         <calcite-action icon="information" text="Match Info" data-panel="match-info"></calcite-action>
         <calcite-action icon="user" text="Players" data-panel="players"></calcite-action>
         <calcite-action icon="filter" text="Filters" data-panel="filters"></calcite-action>
+        <calcite-action icon="graph-bar" text="Spatial Analytics" data-panel="analytics"></calcite-action>
         <calcite-action icon="legend" text="Legend" data-panel="legend"></calcite-action>
       </calcite-action-bar>
 
@@ -95,11 +87,9 @@
           <div class="subtitle">Argentina wins 4-2 on penalties</div>
           <div class="subtitle" style="margin-top:4px;">Lusail Stadium, Qatar — Dec 18, 2022</div>
         </div>
-
         <calcite-block heading="Match Statistics" open collapsible>
           <div id="match-stats"></div>
         </calcite-block>
-
         <calcite-block heading="Key Insights" open collapsible>
           <div id="key-insights"></div>
         </calcite-block>
@@ -118,47 +108,67 @@
       <!-- Filters Panel -->
       <calcite-panel id="filters" heading="Visualization Filters" hidden data-panel-id="filters">
         <calcite-block heading="Team" open collapsible>
-          <calcite-label layout="inline">
-            <calcite-segmented-control id="team-filter" width="full">
-              <calcite-segmented-control-item value="all" checked>Both Teams</calcite-segmented-control-item>
-              <calcite-segmented-control-item value="Argentina">Argentina</calcite-segmented-control-item>
-              <calcite-segmented-control-item value="France">France</calcite-segmented-control-item>
-            </calcite-segmented-control>
-          </calcite-label>
+          <calcite-segmented-control id="team-filter" width="full">
+            <calcite-segmented-control-item value="all" checked>Both Teams</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="Argentina">Argentina</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="France">France</calcite-segmented-control-item>
+          </calcite-segmented-control>
         </calcite-block>
 
         <calcite-block heading="Event Types" open collapsible>
-          <calcite-label layout="inline">
-            <calcite-switch id="filter-pass" checked></calcite-switch> Passes
-          </calcite-label>
-          <calcite-label layout="inline">
-            <calcite-switch id="filter-shot" checked></calcite-switch> Shots
-          </calcite-label>
-          <calcite-label layout="inline">
-            <calcite-switch id="filter-dribble" checked></calcite-switch> Dribbles
-          </calcite-label>
-          <calcite-label layout="inline">
-            <calcite-switch id="filter-tackle" checked></calcite-switch> Tackles & Pressures
-          </calcite-label>
-          <calcite-label layout="inline">
-            <calcite-switch id="filter-carry" checked></calcite-switch> Ball Carries
-          </calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-pass" checked></calcite-switch> Passes</calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-shot" checked></calcite-switch> Shots</calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-dribble" checked></calcite-switch> Dribbles</calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-tackle" checked></calcite-switch> Tackles & Pressures</calcite-label>
+          <calcite-label layout="inline"><calcite-switch id="filter-carry" checked></calcite-switch> Ball Carries</calcite-label>
         </calcite-block>
 
         <calcite-block heading="Visualization Mode" open collapsible>
           <calcite-segmented-control id="viz-mode" width="full">
             <calcite-segmented-control-item value="events" checked>Events</calcite-segmented-control-item>
             <calcite-segmented-control-item value="heatmap">Heatmap</calcite-segmented-control-item>
-            <calcite-segmented-control-item value="passes">Pass Network</calcite-segmented-control-item>
+            <calcite-segmented-control-item value="passes">Pass Map</calcite-segmented-control-item>
             <calcite-segmented-control-item value="shots">Shot Map</calcite-segmented-control-item>
           </calcite-segmented-control>
         </calcite-block>
 
         <calcite-block heading="Match Time (minutes)" open collapsible>
-          <calcite-slider id="time-slider" min="0" max="120" min-value="0" max-value="120"
+          <calcite-slider id="time-slider" min="0" max="125" min-value="0" max-value="125"
             label-handles label-ticks ticks="15" snap step="1"
             min-label="Start" max-label="End">
           </calcite-slider>
+        </calcite-block>
+      </calcite-panel>
+
+      <!-- Advanced Spatial Analytics Panel -->
+      <calcite-panel id="analytics" heading="Spatial Analytics" hidden data-panel-id="analytics">
+        <calcite-block heading="Territorial Control" description="Voronoi-based zone analysis" open collapsible>
+          <calcite-label layout="inline"><calcite-switch id="toggle-voronoi"></calcite-switch> Show Territorial Zones</calcite-label>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Voronoi tessellation partitions the pitch into territories based on average player positions. Each zone represents the area closest to that player — a core GIS technique for spatial dominance analysis.</p>
+        </calcite-block>
+
+        <calcite-block heading="Team Shape (Convex Hull)" description="Formation boundary analysis" open collapsible>
+          <calcite-label layout="inline"><calcite-switch id="toggle-hull"></calcite-switch> Show Team Shapes</calcite-label>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Convex hulls compute the smallest polygon enclosing all player positions — revealing team compactness, defensive blocks, and attacking width. GIS convex hull is used in ecology, urban planning, and now sports.</p>
+        </calcite-block>
+
+        <calcite-block heading="Pressure Zones (KDE)" description="Kernel density estimation" open collapsible>
+          <calcite-label layout="inline"><calcite-switch id="toggle-pressure-zones"></calcite-switch> Show Defensive Pressure</calcite-label>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Kernel Density Estimation (KDE) transforms discrete pressure events into a continuous surface, identifying high-pressure corridors and defensive traps — the same technique used in crime hotspot analysis.</p>
+        </calcite-block>
+
+        <calcite-block heading="Spatial Clustering (DBSCAN)" description="Event cluster detection" open collapsible>
+          <calcite-label layout="inline"><calcite-switch id="toggle-clusters"></calcite-switch> Show Action Clusters</calcite-label>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">DBSCAN (Density-Based Spatial Clustering) groups events by spatial proximity without predefined zones. Identifies organic hotspots of activity — used in epidemiology, logistics, and spatial data mining.</p>
+        </calcite-block>
+
+        <calcite-block heading="Directional Analysis" description="Pass direction rose diagram" open collapsible>
+          <calcite-label layout="inline"><calcite-switch id="toggle-direction"></calcite-switch> Show Pass Directions</calcite-label>
+          <p style="font-size:11px;color:#888;margin:8px 0 0;">Directional flow arrows show aggregate passing vectors across pitch zones. This GIS technique (flow mapping) reveals tactical tendencies — build-up play patterns, wing preference, and counter-attack corridors.</p>
+        </calcite-block>
+
+        <calcite-block heading="Spatial Insights" open collapsible>
+          <div id="spatial-insights"></div>
         </calcite-block>
       </calcite-panel>
 
@@ -173,10 +183,13 @@
           <div class="legend-item"><div class="legend-dot" style="background:#ea80fc;"></div> Tackles / Pressures</div>
           <div class="legend-item"><div class="legend-dot" style="background:#b0bec5;"></div> Ball Carries</div>
         </calcite-block>
-        <calcite-block heading="Pass Network" open>
-          <div class="legend-item"><div class="legend-dot" style="background:#75aadb;"></div> Argentina passes</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#002654;border:1px solid #aac4e8;"></div> France passes</div>
-          <div style="font-size:11px;color:#888;padding:4px 0;">Line thickness = pass frequency between players</div>
+        <calcite-block heading="Spatial Analytics" open>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(117,170,219,0.25);border:1px solid #75aadb;"></div> Argentina territory (Voronoi)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(170,196,232,0.25);border:1px solid #aac4e8;"></div> France territory (Voronoi)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(117,170,219,0.15);border:2px dashed #75aadb;"></div> Argentina shape (Hull)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:rgba(170,196,232,0.15);border:2px dashed #aac4e8;"></div> France shape (Hull)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ff6e40;"></div> Action clusters (DBSCAN)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#40c4ff;width:20px;border-radius:2px;height:3px;"></div> Pass flow arrows</div>
         </calcite-block>
         <calcite-block heading="Data Source" open>
           <div style="font-size:11px;color:#888;line-height:1.5;">
@@ -204,29 +217,24 @@
     import Map from "https://js.arcgis.com/4.32/@arcgis/core/Map.js";
     import MapView from "https://js.arcgis.com/4.32/@arcgis/core/views/MapView.js";
     import GraphicsLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/GraphicsLayer.js";
-    import FeatureLayer from "https://js.arcgis.com/4.32/@arcgis/core/layers/FeatureLayer.js";
     import Graphic from "https://js.arcgis.com/4.32/@arcgis/core/Graphic.js";
     import Point from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Point.js";
     import Polyline from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polyline.js";
     import Polygon from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Polygon.js";
     import Extent from "https://js.arcgis.com/4.32/@arcgis/core/geometry/Extent.js";
     import SpatialReference from "https://js.arcgis.com/4.32/@arcgis/core/geometry/SpatialReference.js";
-    import HeatmapRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/HeatmapRenderer.js";
-    import SimpleRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/SimpleRenderer.js";
     import SimpleMarkerSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleMarkerSymbol.js";
     import SimpleLineSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleLineSymbol.js";
     import SimpleFillSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/SimpleFillSymbol.js";
     import TextSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/TextSymbol.js";
-    import UniqueValueRenderer from "https://js.arcgis.com/4.32/@arcgis/core/renderers/UniqueValueRenderer.js";
-    import * as reactiveUtils from "https://js.arcgis.com/4.32/@arcgis/core/core/reactiveUtils.js";
 
-    // ── Spatial reference: local coordinate system (meters) ──
+    // ── Coordinate helpers ──
+    // Use a large offset in Web Mercator so we're in a valid range
     const SR = new SpatialReference({ wkid: 3857 });
-
-    // Pitch offset so it doesn't sit at 0,0 in Web Mercator (avoids distortion issues)
+    const SCALE = 1000; // 1 pitch unit = 1000 meters in Web Mercator
     const OX = 0, OY = 0;
-    function pitchPt(x, y) { return new Point({ x: OX + x, y: OY + y, spatialReference: SR }); }
-    function pitchCoords(x, y) { return [OX + x, OY + y]; }
+    function px(x, y) { return [OX + x * SCALE, OY + y * SCALE]; }
+    function pt(x, y) { return new Point({ x: OX + x * SCALE, y: OY + y * SCALE, spatialReference: SR }); }
 
     // ── Layers ──
     const pitchLayer = new GraphicsLayer({ title: "Pitch" });
@@ -236,124 +244,79 @@
     const carryLinesLayer = new GraphicsLayer({ title: "Carry Lines" });
     const passNetworkLayer = new GraphicsLayer({ title: "Pass Network" });
     const labelsLayer = new GraphicsLayer({ title: "Labels" });
+    // Advanced analytics layers
+    const voronoiLayer = new GraphicsLayer({ title: "Voronoi Territories", visible: false });
+    const hullLayer = new GraphicsLayer({ title: "Convex Hulls", visible: false });
+    const pressureZoneLayer = new GraphicsLayer({ title: "Pressure Zones", visible: false });
+    const clusterLayer = new GraphicsLayer({ title: "DBSCAN Clusters", visible: false });
+    const directionLayer = new GraphicsLayer({ title: "Pass Directions", visible: false });
 
-    let heatmapLayer = null; // built after data load
 
     // ── Draw pitch ──
     function drawPitch() {
-      const green = new SimpleFillSymbol({
-        color: [26, 71, 42, 255],
-        outline: { color: [255, 255, 255, 200], width: 2 }
-      });
-      const lightStripe = new SimpleFillSymbol({
-        color: [30, 82, 48, 255],
-        outline: { color: "transparent", width: 0 }
-      });
+      const green = new SimpleFillSymbol({ color: [26, 71, 42, 255], outline: { color: "transparent", width: 0 } });
+      const lightStripe = new SimpleFillSymbol({ color: [30, 82, 48, 255], outline: { color: "transparent", width: 0 } });
       const whiteLine = new SimpleLineSymbol({ color: [255, 255, 255, 180], width: 1.5 });
       const thinLine = new SimpleLineSymbol({ color: [255, 255, 255, 120], width: 1 });
 
       // Grass stripes
       for (let i = 0; i < 12; i++) {
         const x1 = i * 10, x2 = (i + 1) * 10;
-        const fill = i % 2 === 0 ? green : lightStripe;
         pitchLayer.add(new Graphic({
-          geometry: new Polygon({
-            rings: [[pitchCoords(x1, 0), pitchCoords(x2, 0), pitchCoords(x2, 80), pitchCoords(x1, 80), pitchCoords(x1, 0)]],
-            spatialReference: SR
-          }),
-          symbol: fill
+          geometry: new Polygon({ rings: [[px(x1, 0), px(x2, 0), px(x2, 80), px(x1, 80), px(x1, 0)]], spatialReference: SR }),
+          symbol: i % 2 === 0 ? green : lightStripe
         }));
       }
 
       // Outline
       pitchLayer.add(new Graphic({
-        geometry: new Polygon({
-          rings: [[pitchCoords(0, 0), pitchCoords(120, 0), pitchCoords(120, 80), pitchCoords(0, 80), pitchCoords(0, 0)]],
-          spatialReference: SR
-        }),
+        geometry: new Polygon({ rings: [[px(0, 0), px(120, 0), px(120, 80), px(0, 80), px(0, 0)]], spatialReference: SR }),
         symbol: new SimpleFillSymbol({ color: "transparent", outline: { color: [255, 255, 255, 220], width: 2.5 } })
       }));
 
       // Halfway line
       pitchLayer.add(new Graphic({
-        geometry: new Polyline({ paths: [[pitchCoords(60, 0), pitchCoords(60, 80)]], spatialReference: SR }),
+        geometry: new Polyline({ paths: [[px(60, 0), px(60, 80)]], spatialReference: SR }),
         symbol: whiteLine
       }));
 
       // Center circle
-      const circlePoints = [];
-      for (let a = 0; a <= 360; a += 5) {
-        const rad = (a * Math.PI) / 180;
-        circlePoints.push(pitchCoords(60 + 9.15 * Math.cos(rad), 40 + 9.15 * Math.sin(rad)));
-      }
-      pitchLayer.add(new Graphic({
-        geometry: new Polyline({ paths: [circlePoints], spatialReference: SR }),
-        symbol: whiteLine
-      }));
+      const circle = [];
+      for (let a = 0; a <= 360; a += 5) { const r = (a * Math.PI) / 180; circle.push(px(60 + 9.15 * Math.cos(r), 40 + 9.15 * Math.sin(r))); }
+      pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [circle], spatialReference: SR }), symbol: whiteLine }));
 
       // Center spot
-      pitchLayer.add(new Graphic({
-        geometry: pitchPt(60, 40),
-        symbol: new SimpleMarkerSymbol({ color: "white", size: 4, outline: null })
-      }));
+      pitchLayer.add(new Graphic({ geometry: pt(60, 40), symbol: new SimpleMarkerSymbol({ color: "white", size: 4, outline: null }) }));
 
       // Penalty areas
-      const penAreas = [
-        [[0, 18], [18, 18], [18, 62], [0, 62], [0, 18]],
-        [[120, 18], [102, 18], [102, 62], [120, 62], [120, 18]]
-      ];
-      penAreas.forEach(coords => {
+      [[0, 18, 18, 62], [102, 18, 120, 62]].forEach(([x1, y1, x2, y2]) => {
         pitchLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [coords.map(c => pitchCoords(c[0], c[1]))], spatialReference: SR }),
+          geometry: new Polyline({ paths: [[px(x1, y1), px(x2, y1), px(x2, y2), px(x1, y2)]], spatialReference: SR }),
           symbol: whiteLine
         }));
       });
 
-      // Goal areas (6-yard box)
-      const goalAreas = [
-        [[0, 30], [6, 30], [6, 50], [0, 50]],
-        [[120, 30], [114, 30], [114, 50], [120, 50]]
-      ];
-      goalAreas.forEach(coords => {
+      // Goal areas
+      [[0, 30, 6, 50], [114, 30, 120, 50]].forEach(([x1, y1, x2, y2]) => {
         pitchLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [coords.map(c => pitchCoords(c[0], c[1]))], spatialReference: SR }),
+          geometry: new Polyline({ paths: [[px(x1, y1), px(x2, y1), px(x2, y2), px(x1, y2)]], spatialReference: SR }),
           symbol: thinLine
         }));
       });
 
-      // Penalty spots
-      [pitchPt(12, 40), pitchPt(108, 40)].forEach(pt => {
-        pitchLayer.add(new Graphic({
-          geometry: pt,
-          symbol: new SimpleMarkerSymbol({ color: "white", size: 3, outline: null })
-        }));
+      // Penalty spots & arcs
+      [pt(12, 40), pt(108, 40)].forEach(p => pitchLayer.add(new Graphic({ geometry: p, symbol: new SimpleMarkerSymbol({ color: "white", size: 3, outline: null }) })));
+
+      [[12, 1, -53, 53], [108, -1, 127, 233]].forEach(([cx, dir, sa, ea]) => {
+        const arc = [];
+        for (let a = sa; a <= ea; a += 3) { const r = (a * Math.PI) / 180; arc.push(px(cx + 9.15 * Math.cos(r), 40 + 9.15 * Math.sin(r))); }
+        pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [arc], spatialReference: SR }), symbol: thinLine }));
       });
 
-      // Penalty arcs
-      [[12, 1], [108, -1]].forEach(([cx, dir]) => {
-        const arcPts = [];
-        const startA = dir === 1 ? -53 : 127;
-        const endA = dir === 1 ? 53 : 233;
-        for (let a = startA; a <= endA; a += 3) {
-          const rad = (a * Math.PI) / 180;
-          arcPts.push(pitchCoords(cx + 9.15 * Math.cos(rad), 40 + 9.15 * Math.sin(rad)));
-        }
+      // Goals
+      [[-2, 36, -2, 44, 0], [122, 36, 122, 44, 120]].forEach(([gx, y1, gx2, y2, edge]) => {
         pitchLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [arcPts], spatialReference: SR }),
-          symbol: thinLine
-        }));
-      });
-
-      // Goals (nets)
-      [[0, -2], [120, 122]].forEach(([gx, gx2]) => {
-        const x1 = Math.min(gx, gx2 > 120 ? 122 : gx2);
-        const x2 = Math.max(gx, gx2 > 120 ? 122 : gx2);
-        pitchLayer.add(new Graphic({
-          geometry: new Polyline({
-            paths: [[pitchCoords(gx, 36), pitchCoords(gx2 > 120 ? 122 : -2, 36),
-                     pitchCoords(gx2 > 120 ? 122 : -2, 44), pitchCoords(gx, 44)]],
-            spatialReference: SR
-          }),
+          geometry: new Polyline({ paths: [[px(edge, y1), px(gx, y1), px(gx2, y2), px(edge, y2)]], spatialReference: SR }),
           symbol: new SimpleLineSymbol({ color: [255, 255, 255, 100], width: 2, style: "dash" })
         }));
       });
@@ -361,28 +324,16 @@
       // Corner arcs
       [[0, 0, 0, 90], [120, 0, 90, 180], [120, 80, 180, 270], [0, 80, 270, 360]].forEach(([cx, cy, sa, ea]) => {
         const pts = [];
-        for (let a = sa; a <= ea; a += 5) {
-          const rad = (a * Math.PI) / 180;
-          pts.push(pitchCoords(cx + 1.5 * Math.cos(rad), cy + 1.5 * Math.sin(rad)));
-        }
-        pitchLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [pts], spatialReference: SR }),
-          symbol: thinLine
-        }));
+        for (let a = sa; a <= ea; a += 5) { const r = (a * Math.PI) / 180; pts.push(px(cx + 1.5 * Math.cos(r), cy + 1.5 * Math.sin(r))); }
+        pitchLayer.add(new Graphic({ geometry: new Polyline({ paths: [pts], spatialReference: SR }), symbol: thinLine }));
       });
 
-      // Team labels
-      labelsLayer.add(new Graphic({
-        geometry: pitchPt(30, -3),
-        symbol: new TextSymbol({ text: "ARGENTINA →", color: "#75aadb", font: { size: 11, weight: "bold" }, yoffset: -8 })
-      }));
-      labelsLayer.add(new Graphic({
-        geometry: pitchPt(90, -3),
-        symbol: new TextSymbol({ text: "← FRANCE", color: "#aac4e8", font: { size: 11, weight: "bold" }, yoffset: -8 })
-      }));
+      // Labels
+      labelsLayer.add(new Graphic({ geometry: pt(30, -3), symbol: new TextSymbol({ text: "ARGENTINA  \u2192", color: "#75aadb", font: { size: 11, weight: "bold" }, yoffset: -8 }) }));
+      labelsLayer.add(new Graphic({ geometry: pt(90, -3), symbol: new TextSymbol({ text: "\u2190  FRANCE", color: "#aac4e8", font: { size: 11, weight: "bold" }, yoffset: -8 }) }));
     }
 
-    // ── Data loading ──
+    // ── Data ──
     const EVENTS_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data/events/3869685.json";
     const LINEUPS_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data/lineups/3869685.json";
 
@@ -390,26 +341,25 @@
     let lineups = [];
     let selectedPlayer = null;
     let currentVizMode = "events";
+    let currentTeamFilter = "all";
 
     async function loadData() {
-      const [eventsRes, lineupsRes] = await Promise.all([fetch(EVENTS_URL), fetch(LINEUPS_URL)]);
-      allEvents = await eventsRes.json();
-      lineups = await lineupsRes.json();
+      const [evR, liR] = await Promise.all([fetch(EVENTS_URL), fetch(LINEUPS_URL)]);
+      allEvents = await evR.json();
+      lineups = await liR.json();
     }
 
-    // ── Event processing ──
+    // ── Event helpers ──
     function getEventType(ev) {
       const t = ev.type?.name;
       if (t === "Pass") return "pass";
       if (t === "Shot") return "shot";
       if (t === "Dribble") return "dribble";
-      if (t === "Pressure" || t === "Tackle" || t === "Block" || t === "Interception") return "tackle";
+      if (t === "Pressure" || t === "Tackle" || t === "Block" || t === "Interception" || t === "Ball Recovery") return "tackle";
       if (t === "Carry") return "carry";
-      if (t === "Ball Recovery") return "tackle";
       return null;
     }
-
-    function getEventColor(ev) {
+    function evColor(ev) {
       const t = getEventType(ev);
       if (t === "pass") return ev.pass?.outcome?.name ? [255, 82, 82, 200] : [0, 230, 118, 200];
       if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? [255, 110, 64, 255] : [255, 215, 64, 200];
@@ -418,8 +368,7 @@
       if (t === "carry") return [176, 190, 197, 120];
       return [255, 255, 255, 100];
     }
-
-    function getEventSize(ev) {
+    function evSize(ev) {
       const t = getEventType(ev);
       if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? 14 : 10;
       if (t === "pass") return 4;
@@ -427,7 +376,7 @@
       return 5;
     }
 
-    // ── Visualization functions ──
+    // ── Rendering ──
     function renderEvents(events) {
       eventsLayer.removeAll();
       passLinesLayer.removeAll();
@@ -438,217 +387,605 @@
         if (!ev.location) return;
         const type = getEventType(ev);
         if (!type) return;
-
         const [x, y] = ev.location;
-        const color = getEventColor(ev);
-        const size = getEventSize(ev);
+        const isGoal = type === "shot" && ev.shot?.outcome?.name === "Goal";
 
-        // Event point
         eventsLayer.add(new Graphic({
-          geometry: pitchPt(x, y),
+          geometry: pt(x, y),
           symbol: new SimpleMarkerSymbol({
-            color,
-            size,
-            outline: type === "shot" && ev.shot?.outcome?.name === "Goal"
-              ? { color: "#fff", width: 2 } : { color: [255, 255, 255, 60], width: 0.5 },
-            style: type === "shot" && ev.shot?.outcome?.name === "Goal" ? "diamond" : "circle"
+            color: evColor(ev), size: evSize(ev),
+            outline: isGoal ? { color: "#fff", width: 2 } : { color: [255, 255, 255, 60], width: 0.5 },
+            style: isGoal ? "diamond" : "circle"
           }),
-          attributes: { ...ev, eventType: type },
           popupTemplate: {
             title: `${ev.player?.name} — ${ev.type?.name}`,
-            content: `
-              <b>Team:</b> ${ev.team?.name}<br/>
-              <b>Minute:</b> ${ev.minute}'${ev.second ? " " + ev.second + '"' : ""}<br/>
-              <b>Type:</b> ${ev.type?.name}<br/>
-              ${ev.pass?.outcome?.name ? "<b>Pass outcome:</b> " + ev.pass.outcome.name + "<br/>" : ""}
-              ${ev.shot?.outcome?.name ? "<b>Shot outcome:</b> " + ev.shot.outcome.name + "<br/>" : ""}
-              ${ev.shot?.statsbomb_xg ? "<b>xG:</b> " + ev.shot.statsbomb_xg.toFixed(3) + "<br/>" : ""}
-              ${ev.pass?.length ? "<b>Pass length:</b> " + ev.pass.length.toFixed(1) + "m<br/>" : ""}
-            `
+            content: `<b>Team:</b> ${ev.team?.name}<br/><b>Minute:</b> ${ev.minute}'<br/><b>Type:</b> ${ev.type?.name}<br/>
+              ${ev.pass?.outcome?.name ? "<b>Pass:</b> " + ev.pass.outcome.name + "<br/>" : ""}
+              ${ev.shot?.outcome?.name ? "<b>Shot:</b> " + ev.shot.outcome.name + "<br/>" : ""}
+              ${ev.shot?.statsbomb_xg ? "<b>xG:</b> " + ev.shot.statsbomb_xg.toFixed(3) + "<br/>" : ""}`
           }
         }));
 
-        // Pass lines
         if (type === "pass" && ev.pass?.end_location) {
           const [ex, ey] = ev.pass.end_location;
           passLinesLayer.add(new Graphic({
-            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({
-              color: ev.pass?.outcome?.name ? [255, 82, 82, 60] : [0, 230, 118, 40],
-              width: 0.8
-            })
+            geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({ color: ev.pass?.outcome?.name ? [255, 82, 82, 50] : [0, 230, 118, 35], width: 0.8 })
           }));
         }
-
-        // Shot lines
         if (type === "shot" && ev.shot?.end_location) {
           const [ex, ey] = ev.shot.end_location;
           shotLinesLayer.add(new Graphic({
-            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({
-              color: ev.shot?.outcome?.name === "Goal" ? [255, 110, 64, 200] : [255, 215, 64, 80],
-              width: ev.shot?.outcome?.name === "Goal" ? 3 : 1.5,
-              style: ev.shot?.outcome?.name === "Goal" ? "solid" : "dash"
-            })
+            geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({ color: isGoal ? [255, 110, 64, 220] : [255, 215, 64, 80], width: isGoal ? 3 : 1.5, style: isGoal ? "solid" : "dash" })
           }));
         }
-
-        // Carry lines
         if (type === "carry" && ev.carry?.end_location) {
           const [ex, ey] = ev.carry.end_location;
           carryLinesLayer.add(new Graphic({
-            geometry: new Polyline({ paths: [[pitchCoords(x, y), pitchCoords(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({ color: [176, 190, 197, 40], width: 0.6, style: "dot" })
+            geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({ color: [176, 190, 197, 35], width: 0.6, style: "dot" })
           }));
         }
       });
     }
 
-    function buildHeatmapLayer(events) {
-      const features = events.filter(e => e.location && getEventType(e)).map((ev, i) => ({
-        geometry: { x: OX + ev.location[0], y: OY + ev.location[1], spatialReference: SR },
-        attributes: { ObjectID: i, team: ev.team?.name, player: ev.player?.name, minute: ev.minute }
-      }));
+    // ── Heatmap (Canvas-based KDE — same proven technique as pressure zones) ──
+    const heatmapGraphicsLayer = new GraphicsLayer({ title: "Heatmap", visible: false });
 
-      if (heatmapLayer) heatmapLayer.destroy();
+    function renderHeatmap(events) {
+      heatmapGraphicsLayer.removeAll();
+      const evts = events.filter(e => e.location && getEventType(e));
+      if (evts.length === 0) return;
 
-      heatmapLayer = new FeatureLayer({
-        title: "Heatmap",
-        source: features,
-        objectIdField: "ObjectID",
-        fields: [
-          { name: "ObjectID", type: "oid" },
-          { name: "team", type: "string" },
-          { name: "player", type: "string" },
-          { name: "minute", type: "integer" }
-        ],
-        renderer: new HeatmapRenderer({
-          colorStops: [
-            { color: [26, 71, 42, 0], ratio: 0 },
-            { color: [0, 100, 0, 60], ratio: 0.15 },
-            { color: [255, 255, 0, 120], ratio: 0.4 },
-            { color: [255, 165, 0, 180], ratio: 0.7 },
-            { color: [255, 0, 0, 220], ratio: 1 }
-          ],
-          minDensity: 0,
-          maxDensity: 0.04,
-          radius: 12
-        }),
-        visible: false
+      const GRID = 2.5, BW = 8;
+      const grid = [];
+
+      for (let gx = 0; gx <= 120; gx += GRID) {
+        for (let gy = 0; gy <= 80; gy += GRID) {
+          let density = 0;
+          evts.forEach(ev => {
+            const dx = gx - ev.location[0], dy = gy - ev.location[1];
+            const w = getEventType(ev) === "shot" ? 5 : getEventType(ev) === "tackle" ? 2 : 1;
+            density += w * Math.exp(-(dx * dx + dy * dy) / (2 * BW * BW));
+          });
+          grid.push({ x: gx, y: gy, d: density });
+        }
+      }
+
+      const maxD = Math.max(...grid.map(g => g.d));
+      if (maxD === 0) return;
+
+      grid.forEach(({ x, y, d }) => {
+        const ratio = d / maxD;
+        if (ratio < 0.03) return;
+
+        // Blue → Cyan → Yellow → Red (high contrast against green pitch)
+        let r, g, b;
+        if (ratio < 0.25) {
+          const t = ratio / 0.25;
+          r = 20; g = Math.floor(20 + t * 100); b = Math.floor(120 + t * 135);
+        } else if (ratio < 0.5) {
+          const t = (ratio - 0.25) / 0.25;
+          r = Math.floor(t * 255); g = Math.floor(120 + t * 135); b = Math.floor(255 * (1 - t));
+        } else if (ratio < 0.75) {
+          const t = (ratio - 0.5) / 0.25;
+          r = 255; g = Math.floor(255 * (1 - t * 0.4)); b = 0;
+        } else {
+          const t = (ratio - 0.75) / 0.25;
+          r = 255; g = Math.floor(153 * (1 - t)); b = Math.floor(t * 60);
+        }
+
+        const alpha = Math.floor(80 + ratio * 175);
+        const half = GRID / 2;
+
+        heatmapGraphicsLayer.add(new Graphic({
+          geometry: new Polygon({
+            rings: [[px(x - half, y - half), px(x + half, y - half), px(x + half, y + half), px(x - half, y + half), px(x - half, y - half)]],
+            spatialReference: SR
+          }),
+          symbol: new SimpleFillSymbol({ color: [r, g, b, alpha], outline: { color: "transparent", width: 0 } })
+        }));
       });
-
-      return heatmapLayer;
     }
 
+    // ── Pass Network ──
     function renderPassNetwork(events) {
       passNetworkLayer.removeAll();
-
-      // Group passes by player pair
-      const pairCounts = {};
-      const playerPositions = {};
+      const pairCounts = {}, playerPos = {};
 
       events.filter(e => e.type?.name === "Pass" && !e.pass?.outcome?.name && e.location && e.pass?.recipient?.name).forEach(ev => {
-        const from = ev.player.name;
-        const to = ev.pass.recipient.name;
-        const team = ev.team.name;
+        const from = ev.player.name, to = ev.pass.recipient.name, team = ev.team.name;
         const key = [from, to].sort().join("|||") + "|||" + team;
-
         pairCounts[key] = (pairCounts[key] || 0) + 1;
 
-        if (!playerPositions[from]) playerPositions[from] = { x: 0, y: 0, count: 0, team };
-        playerPositions[from].x += ev.location[0];
-        playerPositions[from].y += ev.location[1];
-        playerPositions[from].count++;
+        if (!playerPos[from]) playerPos[from] = { x: 0, y: 0, n: 0, team };
+        playerPos[from].x += ev.location[0]; playerPos[from].y += ev.location[1]; playerPos[from].n++;
 
-        if (!playerPositions[to] && ev.pass.end_location) {
-          playerPositions[to] = { x: 0, y: 0, count: 0, team };
-        }
-        if (playerPositions[to] && ev.pass.end_location) {
-          playerPositions[to].x += ev.pass.end_location[0];
-          playerPositions[to].y += ev.pass.end_location[1];
-          playerPositions[to].count++;
+        if (!playerPos[to] && ev.pass.end_location) playerPos[to] = { x: 0, y: 0, n: 0, team };
+        if (playerPos[to] && ev.pass.end_location) {
+          playerPos[to].x += ev.pass.end_location[0]; playerPos[to].y += ev.pass.end_location[1]; playerPos[to].n++;
         }
       });
 
-      // Draw connections
       Object.entries(pairCounts).forEach(([key, count]) => {
         if (count < 3) return;
         const [p1, p2, team] = key.split("|||");
-        const pos1 = playerPositions[p1];
-        const pos2 = playerPositions[p2];
-        if (!pos1 || !pos2 || pos1.count === 0 || pos2.count === 0) return;
-
-        const x1 = pos1.x / pos1.count, y1 = pos1.y / pos1.count;
-        const x2 = pos2.x / pos2.count, y2 = pos2.y / pos2.count;
-
+        const a = playerPos[p1], b = playerPos[p2];
+        if (!a || !b || !a.n || !b.n) return;
         const isArg = team === "Argentina";
         passNetworkLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [[pitchCoords(x1, y1), pitchCoords(x2, y2)]], spatialReference: SR }),
+          geometry: new Polyline({ paths: [[px(a.x / a.n, a.y / a.n), px(b.x / b.n, b.y / b.n)]], spatialReference: SR }),
           symbol: new SimpleLineSymbol({
-            color: isArg ? [117, 170, 219, Math.min(200, 40 + count * 12)] : [0, 38, 84, Math.min(200, 40 + count * 12)],
-            width: Math.min(6, 0.5 + count * 0.4)
+            color: isArg ? [117, 170, 219, Math.min(220, 40 + count * 15)] : [170, 196, 232, Math.min(220, 40 + count * 15)],
+            width: Math.min(7, 0.5 + count * 0.5)
           })
         }));
       });
 
-      // Draw avg player positions
-      Object.entries(playerPositions).forEach(([name, pos]) => {
-        if (pos.count === 0) return;
-        const avgX = pos.x / pos.count;
-        const avgY = pos.y / pos.count;
-        const isArg = pos.team === "Argentina";
-        const lastName = name.split(" ").pop();
-
+      Object.entries(playerPos).forEach(([name, p]) => {
+        if (!p.n) return;
+        const ax = p.x / p.n, ay = p.y / p.n;
+        const isArg = p.team === "Argentina";
         passNetworkLayer.add(new Graphic({
-          geometry: pitchPt(avgX, avgY),
+          geometry: pt(ax, ay),
           symbol: new SimpleMarkerSymbol({
-            color: isArg ? [117, 170, 219, 220] : [0, 38, 84, 220],
-            size: Math.min(16, 6 + pos.count * 0.15),
-            outline: { color: "#fff", width: 1.5 }
+            color: isArg ? [117, 170, 219, 230] : [170, 196, 232, 230],
+            size: Math.min(18, 8 + p.n * 0.12), outline: { color: "#fff", width: 2 }
           })
         }));
         passNetworkLayer.add(new Graphic({
-          geometry: pitchPt(avgX, avgY),
-          symbol: new TextSymbol({
-            text: lastName,
-            color: "#fff",
-            font: { size: 8, weight: "bold" },
-            yoffset: -14,
-            haloColor: "black",
-            haloSize: 1
+          geometry: pt(ax, ay),
+          symbol: new TextSymbol({ text: name.split(" ").pop(), color: "#fff", font: { size: 9, weight: "bold" }, yoffset: -16, haloColor: "#000", haloSize: 1.5 })
+        }));
+      });
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ADVANCED SPATIAL ANALYTICS
+    // ═══════════════════════════════════════════════
+
+    function getPlayerAvgPositions(events) {
+      const pos = {};
+      events.filter(e => e.location && e.player?.name && e.type?.name !== "Starting XI" && e.type?.name !== "Half Start").forEach(ev => {
+        const key = ev.player.name;
+        if (!pos[key]) pos[key] = { x: 0, y: 0, n: 0, team: ev.team.name };
+        pos[key].x += ev.location[0]; pos[key].y += ev.location[1]; pos[key].n++;
+      });
+      const result = [];
+      Object.entries(pos).forEach(([name, p]) => {
+        if (p.n >= 10) result.push({ name, x: p.x / p.n, y: p.y / p.n, team: p.team, n: p.n });
+      });
+      return result;
+    }
+
+    // ── Voronoi Tessellation (Fortune's algorithm simplified) ──
+    function computeVoronoi(players) {
+      voronoiLayer.removeAll();
+      const GRID = 2; // resolution
+      const cells = {};
+      players.forEach(p => { cells[p.name] = []; });
+
+      // For each grid point, find nearest player
+      for (let gx = 0; gx <= 120; gx += GRID) {
+        for (let gy = 0; gy <= 80; gy += GRID) {
+          let minD = Infinity, nearest = null;
+          players.forEach(p => {
+            const d = (gx - p.x) ** 2 + (gy - p.y) ** 2;
+            if (d < minD) { minD = d; nearest = p; }
+          });
+          if (nearest) cells[nearest.name].push([gx, gy]);
+        }
+      }
+
+      // Draw each cell as a polygon using convex hull of grid points
+      Object.entries(cells).forEach(([name, points]) => {
+        if (points.length < 3) return;
+        const player = players.find(p => p.name === name);
+        const hull = convexHull(points);
+        if (hull.length < 3) return;
+        const isArg = player.team === "Argentina";
+
+        const ring = hull.map(([x, y]) => px(x, y));
+        ring.push(ring[0]);
+
+        voronoiLayer.add(new Graphic({
+          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
+          symbol: new SimpleFillSymbol({
+            color: isArg ? [117, 170, 219, 30] : [170, 196, 232, 30],
+            outline: { color: isArg ? [117, 170, 219, 120] : [170, 196, 232, 120], width: 1, style: "dot" }
           })
         }));
       });
     }
 
-    // ── Filter logic ──
+    // ── Convex Hull (Graham scan) ──
+    function convexHull(points) {
+      if (points.length < 3) return points;
+      const pts = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+      function cross(O, A, B) { return (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0]); }
+
+      const lower = [];
+      for (const p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper = [];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pts[i]) <= 0) upper.pop();
+        upper.push(pts[i]);
+      }
+      upper.pop(); lower.pop();
+      return lower.concat(upper);
+    }
+
+    function computeTeamHulls(events) {
+      hullLayer.removeAll();
+      const players = getPlayerAvgPositions(events);
+
+      ["Argentina", "France"].forEach(team => {
+        const teamPlayers = players.filter(p => p.team === team);
+        if (teamPlayers.length < 3) return;
+        const pts = teamPlayers.map(p => [p.x, p.y]);
+        const hull = convexHull(pts);
+        if (hull.length < 3) return;
+        const isArg = team === "Argentina";
+
+        const ring = hull.map(([x, y]) => px(x, y));
+        ring.push(ring[0]);
+
+        hullLayer.add(new Graphic({
+          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
+          symbol: new SimpleFillSymbol({
+            color: isArg ? [117, 170, 219, 20] : [170, 196, 232, 20],
+            outline: { color: isArg ? [117, 170, 219, 200] : [170, 196, 232, 200], width: 2.5, style: "dash" }
+          })
+        }));
+
+        // Centroid label
+        const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
+        const cy = hull.reduce((s, p) => s + p[1], 0) / hull.length;
+        // Area calculation (shoelace)
+        let area = 0;
+        for (let i = 0; i < hull.length; i++) {
+          const j = (i + 1) % hull.length;
+          area += hull[i][0] * hull[j][1] - hull[j][0] * hull[i][1];
+        }
+        area = Math.abs(area) / 2;
+
+        hullLayer.add(new Graphic({
+          geometry: pt(cx, cy),
+          symbol: new TextSymbol({
+            text: `${team}\n${area.toFixed(0)} sq units`,
+            color: isArg ? "#75aadb" : "#aac4e8",
+            font: { size: 10, weight: "bold" },
+            haloColor: "#000", haloSize: 1.5
+          })
+        }));
+      });
+    }
+
+    // ── Pressure Zones (Canvas-based KDE rendered as grid polygons) ──
+    function computePressureZones(events) {
+      pressureZoneLayer.removeAll();
+      const pressures = events.filter(e => (e.type?.name === "Pressure" || e.type?.name === "Tackle" || e.type?.name === "Ball Recovery") && e.location);
+
+      if (pressures.length === 0) return;
+
+      const GRID = 4;
+      const BANDWIDTH = 8;
+      const densityGrid = [];
+
+      for (let gx = 0; gx <= 120; gx += GRID) {
+        for (let gy = 0; gy <= 80; gy += GRID) {
+          let density = 0;
+          pressures.forEach(ev => {
+            const dx = gx - ev.location[0], dy = gy - ev.location[1];
+            const d2 = dx * dx + dy * dy;
+            density += Math.exp(-d2 / (2 * BANDWIDTH * BANDWIDTH));
+          });
+          densityGrid.push({ x: gx, y: gy, density });
+        }
+      }
+
+      const maxD = Math.max(...densityGrid.map(g => g.density));
+
+      densityGrid.forEach(({ x, y, density }) => {
+        const ratio = density / maxD;
+        if (ratio < 0.15) return;
+
+        const alpha = Math.floor(ratio * 150);
+        const r = Math.floor(255 * ratio);
+        const g = Math.floor(100 * (1 - ratio));
+
+        pressureZoneLayer.add(new Graphic({
+          geometry: new Polygon({
+            rings: [[px(x - GRID / 2, y - GRID / 2), px(x + GRID / 2, y - GRID / 2), px(x + GRID / 2, y + GRID / 2), px(x - GRID / 2, y + GRID / 2), px(x - GRID / 2, y - GRID / 2)]],
+            spatialReference: SR
+          }),
+          symbol: new SimpleFillSymbol({
+            color: [r, g, 0, alpha],
+            outline: { color: "transparent", width: 0 }
+          })
+        }));
+      });
+    }
+
+    // ── DBSCAN Clustering ──
+    function dbscan(points, eps, minPts) {
+      const labels = new Array(points.length).fill(-1); // -1 = unvisited
+      let clusterId = 0;
+
+      function regionQuery(idx) {
+        const neighbors = [];
+        const p = points[idx];
+        for (let i = 0; i < points.length; i++) {
+          if (i === idx) continue;
+          const dx = p[0] - points[i][0], dy = p[1] - points[i][1];
+          if (Math.sqrt(dx * dx + dy * dy) <= eps) neighbors.push(i);
+        }
+        return neighbors;
+      }
+
+      for (let i = 0; i < points.length; i++) {
+        if (labels[i] !== -1) continue;
+        const neighbors = regionQuery(i);
+        if (neighbors.length < minPts) { labels[i] = 0; continue; } // noise
+
+        clusterId++;
+        labels[i] = clusterId;
+        const queue = [...neighbors];
+        while (queue.length > 0) {
+          const q = queue.shift();
+          if (labels[q] === 0) labels[q] = clusterId; // was noise
+          if (labels[q] !== -1) continue;
+          labels[q] = clusterId;
+          const qNeighbors = regionQuery(q);
+          if (qNeighbors.length >= minPts) queue.push(...qNeighbors);
+        }
+      }
+      return { labels, numClusters: clusterId };
+    }
+
+    function computeClusters(events) {
+      clusterLayer.removeAll();
+      const evts = events.filter(e => e.location && getEventType(e) && getEventType(e) !== "carry");
+      if (evts.length === 0) return;
+
+      // Sample if too many
+      const sampled = evts.length > 500 ? evts.filter((_, i) => i % Math.ceil(evts.length / 500) === 0) : evts;
+      const points = sampled.map(e => [e.location[0], e.location[1]]);
+
+      const { labels, numClusters } = dbscan(points, 8, 5);
+
+      // Colors for clusters
+      const clusterColors = [
+        [255, 110, 64], [64, 196, 255], [255, 215, 64], [0, 230, 118],
+        [234, 128, 252], [255, 82, 82], [100, 255, 218], [255, 171, 64]
+      ];
+
+      // Draw cluster hulls
+      for (let c = 1; c <= numClusters; c++) {
+        const clusterPts = points.filter((_, i) => labels[i] === c);
+        if (clusterPts.length < 3) continue;
+
+        const hull = convexHull(clusterPts);
+        if (hull.length < 3) continue;
+
+        const color = clusterColors[(c - 1) % clusterColors.length];
+        const ring = hull.map(([x, y]) => px(x, y));
+        ring.push(ring[0]);
+
+        clusterLayer.add(new Graphic({
+          geometry: new Polygon({ rings: [ring], spatialReference: SR }),
+          symbol: new SimpleFillSymbol({
+            color: [...color, 40],
+            outline: { color: [...color, 180], width: 2 }
+          })
+        }));
+
+        // Centroid with label
+        const cx = clusterPts.reduce((s, p) => s + p[0], 0) / clusterPts.length;
+        const cy = clusterPts.reduce((s, p) => s + p[1], 0) / clusterPts.length;
+        clusterLayer.add(new Graphic({
+          geometry: pt(cx, cy),
+          symbol: new TextSymbol({
+            text: `C${c} (${clusterPts.length})`,
+            color, font: { size: 10, weight: "bold" },
+            haloColor: "#000", haloSize: 1.5
+          })
+        }));
+      }
+    }
+
+    // ── Directional Flow Analysis ──
+    function computeDirectionalFlow(events) {
+      directionLayer.removeAll();
+      const passes = events.filter(e => e.type?.name === "Pass" && e.location && e.pass?.end_location && !e.pass?.outcome?.name);
+
+      // Divide pitch into zones (6x4 grid)
+      const COLS = 6, ROWS = 4;
+      const ZW = 120 / COLS, ZH = 80 / ROWS;
+      const zones = {};
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          zones[`${r}_${c}`] = { dx: 0, dy: 0, count: 0, team: {} };
+        }
+      }
+
+      passes.forEach(ev => {
+        const [sx, sy] = ev.location;
+        const [ex, ey] = ev.pass.end_location;
+        const col = Math.min(COLS - 1, Math.floor(sx / ZW));
+        const row = Math.min(ROWS - 1, Math.floor(sy / ZH));
+        const key = `${row}_${col}`;
+        zones[key].dx += (ex - sx);
+        zones[key].dy += (ey - sy);
+        zones[key].count++;
+        zones[key].team[ev.team.name] = (zones[key].team[ev.team.name] || 0) + 1;
+      });
+
+      Object.entries(zones).forEach(([key, z]) => {
+        if (z.count < 5) return;
+        const [row, col] = key.split("_").map(Number);
+        const cx = (col + 0.5) * ZW;
+        const cy = (row + 0.5) * ZH;
+        const avgDx = z.dx / z.count;
+        const avgDy = z.dy / z.count;
+        const mag = Math.sqrt(avgDx * avgDx + avgDy * avgDy);
+        if (mag < 1) return;
+
+        // Normalize and scale
+        const scale = Math.min(ZW * 0.4, mag * 0.8);
+        const nx = (avgDx / mag) * scale;
+        const ny = (avgDy / mag) * scale;
+
+        // Dominant team
+        const argCount = z.team["Argentina"] || 0;
+        const fraCount = z.team["France"] || 0;
+        const color = argCount > fraCount ? [117, 170, 219, 200] : [170, 196, 232, 200];
+
+        // Arrow line
+        directionLayer.add(new Graphic({
+          geometry: new Polyline({ paths: [[px(cx - nx / 2, cy - ny / 2), px(cx + nx / 2, cy + ny / 2)]], spatialReference: SR }),
+          symbol: new SimpleLineSymbol({ color, width: Math.min(4, 1 + z.count * 0.03) })
+        }));
+
+        // Arrowhead
+        const angle = Math.atan2(ny, nx);
+        const headLen = 2;
+        const tipX = cx + nx / 2, tipY = cy + ny / 2;
+        const lx = tipX - headLen * Math.cos(angle - 0.5);
+        const ly = tipY - headLen * Math.sin(angle - 0.5);
+        const rx = tipX - headLen * Math.cos(angle + 0.5);
+        const ry = tipY - headLen * Math.sin(angle + 0.5);
+
+        directionLayer.add(new Graphic({
+          geometry: new Polygon({ rings: [[px(tipX, tipY), px(lx, ly), px(rx, ry), px(tipX, tipY)]], spatialReference: SR }),
+          symbol: new SimpleFillSymbol({ color, outline: { color: "transparent", width: 0 } })
+        }));
+
+        // Count label
+        directionLayer.add(new Graphic({
+          geometry: pt(cx, cy),
+          symbol: new TextSymbol({
+            text: `${z.count}`,
+            color: [255, 255, 255, 150],
+            font: { size: 8 },
+            yoffset: 10,
+            haloColor: "#000", haloSize: 1
+          })
+        }));
+      });
+    }
+
+    // ── Generate spatial insights ──
+    function generateSpatialInsights(events) {
+      const container = document.getElementById("spatial-insights");
+      const players = getPlayerAvgPositions(events);
+      const insights = [];
+
+      // Team compactness
+      ["Argentina", "France"].forEach(team => {
+        const tp = players.filter(p => p.team === team);
+        if (tp.length < 3) return;
+        const cx = tp.reduce((s, p) => s + p.x, 0) / tp.length;
+        const cy = tp.reduce((s, p) => s + p.y, 0) / tp.length;
+        const spread = Math.sqrt(tp.reduce((s, p) => s + (p.x - cx) ** 2 + (p.y - cy) ** 2, 0) / tp.length);
+        insights.push({
+          title: `${team} — Spatial Spread`,
+          text: `Average spread from centroid: ${spread.toFixed(1)} units. ${spread > 25 ? "Wide formation — stretched the pitch." : "Compact block — maintained defensive shape."}`
+        });
+      });
+
+      // High press zone
+      const argPressures = events.filter(e => e.team?.name === "Argentina" && e.type?.name === "Pressure" && e.location);
+      const fraPressures = events.filter(e => e.team?.name === "France" && e.type?.name === "Pressure" && e.location);
+      if (argPressures.length > 0) {
+        const avgX = argPressures.reduce((s, e) => s + e.location[0], 0) / argPressures.length;
+        insights.push({
+          title: "Argentina Press Line",
+          text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press — winning ball in opponent's half." : "Mid/low block pressing strategy."}`
+        });
+      }
+      if (fraPressures.length > 0) {
+        const avgX = fraPressures.reduce((s, e) => s + (120 - e.location[0]), 0) / fraPressures.length;
+        insights.push({
+          title: "France Press Line",
+          text: `Average pressing position: ${avgX.toFixed(1)}m from own goal. ${avgX > 60 ? "High press strategy." : "Sat deep and absorbed pressure."}`
+        });
+      }
+
+      // Pass direction bias
+      const argPasses = events.filter(e => e.team?.name === "Argentina" && e.type?.name === "Pass" && e.location && e.pass?.end_location);
+      if (argPasses.length > 0) {
+        const fwd = argPasses.filter(e => e.pass.end_location[0] > e.location[0]).length;
+        const pct = ((fwd / argPasses.length) * 100).toFixed(0);
+        insights.push({
+          title: "Directional Tendency",
+          text: `Argentina played ${pct}% of passes forward. ${pct > 50 ? "Aggressive, progressive passing approach." : "Patient build-up with backward recycling."}`
+        });
+      }
+
+      // Nearest neighbor analysis
+      const allWithLoc = events.filter(e => e.location && e.type?.name === "Shot");
+      if (allWithLoc.length >= 2) {
+        let totalNN = 0;
+        allWithLoc.forEach((e1, i) => {
+          let minD = Infinity;
+          allWithLoc.forEach((e2, j) => {
+            if (i === j) return;
+            const dx = e1.location[0] - e2.location[0], dy = e1.location[1] - e2.location[1];
+            minD = Math.min(minD, Math.sqrt(dx * dx + dy * dy));
+          });
+          totalNN += minD;
+        });
+        const avgNN = totalNN / allWithLoc.length;
+        insights.push({
+          title: "Shot Clustering (Nearest Neighbor)",
+          text: `Average nearest-neighbor distance between shots: ${avgNN.toFixed(1)} units. ${avgNN < 10 ? "Shots are highly clustered — indicating clear attacking zones." : "Shots are dispersed — attacks came from varied positions."}`
+        });
+      }
+
+      container.innerHTML = insights.map(i => `
+        <div class="insight-card spatial"><h4>${i.title}</h4><p>${i.text}</p></div>
+      `).join("");
+    }
+
+    // ── Filter logic (FIXED) ──
+    function getTeamFilterValue() {
+      const ctrl = document.getElementById("team-filter");
+      const selected = ctrl.selectedItems;
+      if (selected && selected.length > 0) return selected[0].value;
+      // Fallback: check for checked attribute
+      const checked = ctrl.querySelector("[checked]");
+      return checked?.value || "all";
+    }
+
     function getFilteredEvents() {
-      const teamFilter = document.querySelector("#team-filter calcite-segmented-control-item[checked]")?.value || "all";
+      const teamFilter = currentTeamFilter;
       const showPass = document.getElementById("filter-pass").checked;
       const showShot = document.getElementById("filter-shot").checked;
       const showDribble = document.getElementById("filter-dribble").checked;
       const showTackle = document.getElementById("filter-tackle").checked;
       const showCarry = document.getElementById("filter-carry").checked;
-      const timeSlider = document.getElementById("time-slider");
-      const minTime = timeSlider.minValue;
-      const maxTime = timeSlider.maxValue;
+      const slider = document.getElementById("time-slider");
+      const minT = slider.minValue, maxT = slider.maxValue;
 
       return allEvents.filter(ev => {
         if (!ev.location) return false;
         const type = getEventType(ev);
         if (!type) return false;
-
         if (teamFilter !== "all" && ev.team?.name !== teamFilter) return false;
         if (selectedPlayer && ev.player?.name !== selectedPlayer) return false;
-
         if (type === "pass" && !showPass) return false;
         if (type === "shot" && !showShot) return false;
         if (type === "dribble" && !showDribble) return false;
         if (type === "tackle" && !showTackle) return false;
         if (type === "carry" && !showCarry) return false;
-
-        if (ev.minute < minTime || ev.minute > maxTime) return false;
-
+        if (ev.minute < minT || ev.minute > maxT) return false;
         return true;
       });
     }
@@ -656,13 +993,12 @@
     function updateVisualization() {
       const filtered = getFilteredEvents();
 
-      // Reset layer visibility
       eventsLayer.visible = false;
       passLinesLayer.visible = false;
       shotLinesLayer.visible = false;
       carryLinesLayer.visible = false;
       passNetworkLayer.visible = false;
-      if (heatmapLayer) heatmapLayer.visible = false;
+      heatmapGraphicsLayer.visible = false;
 
       switch (currentVizMode) {
         case "events":
@@ -672,13 +1008,8 @@
           carryLinesLayer.visible = true;
           break;
         case "heatmap":
-          renderEvents(filtered);
-          if (heatmapLayer) {
-            heatmapLayer.destroy();
-          }
-          heatmapLayer = buildHeatmapLayer(filtered);
-          map.add(heatmapLayer);
-          heatmapLayer.visible = true;
+          renderHeatmap(filtered);
+          heatmapGraphicsLayer.visible = true;
           break;
         case "passes":
           renderPassNetwork(filtered);
@@ -690,160 +1021,90 @@
           shotLinesLayer.visible = true;
           break;
       }
+
+      // Update analytics layers if visible
+      if (voronoiLayer.visible || hullLayer.visible || pressureZoneLayer.visible || clusterLayer.visible || directionLayer.visible) {
+        updateAnalytics(filtered);
+      }
+    }
+
+    function updateAnalytics(filtered) {
+      const players = getPlayerAvgPositions(filtered.length > 0 ? filtered : allEvents);
+      if (voronoiLayer.visible) computeVoronoi(players);
+      if (hullLayer.visible) computeTeamHulls(filtered.length > 0 ? filtered : allEvents);
+      if (pressureZoneLayer.visible) computePressureZones(filtered.length > 0 ? filtered : allEvents);
+      if (clusterLayer.visible) computeClusters(filtered.length > 0 ? filtered : allEvents);
+      if (directionLayer.visible) computeDirectionalFlow(filtered.length > 0 ? filtered : allEvents);
     }
 
     // ── Statistics ──
     function computeStats() {
       const stats = { Argentina: {}, France: {} };
-
       ["Argentina", "France"].forEach(team => {
-        const teamEvents = allEvents.filter(e => e.team?.name === team);
-        const passes = teamEvents.filter(e => e.type?.name === "Pass");
-        const successPasses = passes.filter(e => !e.pass?.outcome?.name);
-        const shots = teamEvents.filter(e => e.type?.name === "Shot");
+        const te = allEvents.filter(e => e.team?.name === team);
+        const passes = te.filter(e => e.type?.name === "Pass");
+        const sp = passes.filter(e => !e.pass?.outcome?.name);
+        const shots = te.filter(e => e.type?.name === "Shot");
         const goals = shots.filter(e => e.shot?.outcome?.name === "Goal");
-        const dribbles = teamEvents.filter(e => e.type?.name === "Dribble");
-        const successDribbles = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
-        const tackles = teamEvents.filter(e => ["Tackle", "Interception", "Block"].includes(e.type?.name));
-        const pressures = teamEvents.filter(e => e.type?.name === "Pressure");
-        const carries = teamEvents.filter(e => e.type?.name === "Carry");
-        const xg = shots.reduce((sum, e) => sum + (e.shot?.statsbomb_xg || 0), 0);
+        const dribbles = te.filter(e => e.type?.name === "Dribble");
+        const sd = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
+        const tackles = te.filter(e => ["Tackle", "Interception", "Block"].includes(e.type?.name));
+        const pressures = te.filter(e => e.type?.name === "Pressure");
+        const carries = te.filter(e => e.type?.name === "Carry");
+        const xg = shots.reduce((s, e) => s + (e.shot?.statsbomb_xg || 0), 0);
 
         stats[team] = {
-          passes: passes.length,
-          passAccuracy: passes.length ? ((successPasses.length / passes.length) * 100).toFixed(0) : 0,
-          shots: shots.length,
-          goals: goals.length,
-          xg: xg.toFixed(2),
-          dribbles: dribbles.length,
-          dribbleSuccess: dribbles.length ? ((successDribbles.length / dribbles.length) * 100).toFixed(0) : 0,
-          tackles: tackles.length,
-          pressures: pressures.length,
-          carries: carries.length,
-          totalDistance: carries.reduce((sum, e) => {
-            if (e.location && e.carry?.end_location) {
-              const dx = e.carry.end_location[0] - e.location[0];
-              const dy = e.carry.end_location[1] - e.location[1];
-              return sum + Math.sqrt(dx * dx + dy * dy);
-            }
-            return sum;
+          passes: passes.length, passAccuracy: passes.length ? ((sp.length / passes.length) * 100).toFixed(0) : 0,
+          shots: shots.length, goals: goals.length, xg: xg.toFixed(2),
+          dribbles: dribbles.length, dribbleSuccess: dribbles.length ? ((sd.length / dribbles.length) * 100).toFixed(0) : 0,
+          tackles: tackles.length, pressures: pressures.length, carries: carries.length,
+          totalDistance: carries.reduce((s, e) => {
+            if (e.location && e.carry?.end_location) { const dx = e.carry.end_location[0] - e.location[0], dy = e.carry.end_location[1] - e.location[1]; return s + Math.sqrt(dx * dx + dy * dy); }
+            return s;
           }, 0).toFixed(0)
         };
       });
-
       return stats;
     }
 
     function renderStats(stats) {
-      const container = document.getElementById("match-stats");
-      const rows = [
-        ["Passes", "passes"],
-        ["Pass Accuracy", "passAccuracy", "%"],
-        ["Shots", "shots"],
-        ["Goals", "goals"],
-        ["Expected Goals (xG)", "xg"],
-        ["Dribbles", "dribbles"],
-        ["Dribble Success", "dribbleSuccess", "%"],
-        ["Tackles/Blocks/Intc.", "tackles"],
-        ["Pressures", "pressures"],
-        ["Ball Carries", "carries"],
-        ["Carry Distance", "totalDistance", "m"]
-      ];
+      const rows = [["Passes", "passes"], ["Pass Accuracy", "passAccuracy", "%"], ["Shots", "shots"], ["Goals", "goals"],
+        ["Expected Goals (xG)", "xg"], ["Dribbles", "dribbles"], ["Dribble Success", "dribbleSuccess", "%"],
+        ["Tackles/Blocks/Intc.", "tackles"], ["Pressures", "pressures"], ["Ball Carries", "carries"], ["Carry Distance", "totalDistance", "m"]];
 
-      container.innerHTML = rows.map(([label, key, suffix = ""]) => `
-        <div class="stat-row">
-          <span class="arg">${stats.Argentina[key]}${suffix}</span>
-          <span class="label">${label}</span>
-          <span class="fra">${stats.France[key]}${suffix}</span>
-        </div>
-      `).join("");
+      document.getElementById("match-stats").innerHTML = rows.map(([label, key, sfx = ""]) =>
+        `<div class="stat-row"><span class="arg">${stats.Argentina[key]}${sfx}</span><span class="label">${label}</span><span class="fra">${stats.France[key]}${sfx}</span></div>`
+      ).join("");
     }
 
     function generateInsights(stats) {
-      const container = document.getElementById("key-insights");
-      const insights = [];
-
-      // Possession proxy
-      const totalActions = (stats.Argentina.passes + stats.France.passes);
-      const argPoss = ((stats.Argentina.passes / totalActions) * 100).toFixed(0);
-      insights.push({
-        title: "Possession Battle",
-        text: `Argentina dominated possession with ~${argPoss}% of passes (${stats.Argentina.passes} vs ${stats.France.passes}). They controlled the tempo for most of the match.`
-      });
-
-      // xG analysis
-      insights.push({
-        title: "Expected Goals Analysis",
-        text: `Argentina's xG: ${stats.Argentina.xg} | France's xG: ${stats.France.xg}. ${parseFloat(stats.Argentina.xg) > parseFloat(stats.France.xg) ? "Argentina created higher quality chances overall." : "France were more clinical despite having fewer chances."}`
-      });
-
-      // Pressing
-      if (stats.Argentina.pressures > stats.France.pressures) {
-        insights.push({
-          title: "High Press Dominance",
-          text: `Argentina applied ${stats.Argentina.pressures} pressures vs France's ${stats.France.pressures}, demonstrating their aggressive pressing style under Scaloni.`
-        });
-      } else {
-        insights.push({
-          title: "Defensive Intensity",
-          text: `France applied ${stats.France.pressures} pressures vs Argentina's ${stats.Argentina.pressures}, showing their defensive work rate especially in the second half comeback.`
-        });
-      }
-
-      // Key match narrative
-      insights.push({
-        title: "The Greatest Final",
-        text: "Messi scored twice (including in extra time) while Mbappe completed a hat-trick with two goals in 97 seconds. Argentina prevailed 4-2 in the penalty shootout."
-      });
-
-      // GIS insight
-      insights.push({
-        title: "Spatial Analysis — GIS Power",
-        text: "This visualization uses ArcGIS to transform raw event coordinates into spatial intelligence. Heatmaps reveal player zones, pass networks expose tactical structure, and shot maps show xG-weighted chance quality — all powered by geographic information science."
-      });
-
-      container.innerHTML = insights.map(i => `
-        <div class="insight-card">
-          <h4>${i.title}</h4>
-          <p>${i.text}</p>
-        </div>
-      `).join("");
+      const total = stats.Argentina.passes + stats.France.passes;
+      const argP = ((stats.Argentina.passes / total) * 100).toFixed(0);
+      const insights = [
+        { title: "Possession Battle", text: `Argentina dominated with ~${argP}% of passes (${stats.Argentina.passes} vs ${stats.France.passes}).` },
+        { title: "Expected Goals", text: `Argentina xG: ${stats.Argentina.xg} | France xG: ${stats.France.xg}. ${parseFloat(stats.Argentina.xg) > parseFloat(stats.France.xg) ? "Argentina created higher quality chances." : "France more clinical."}` },
+        { title: "The Greatest Final", text: "Messi scored twice, Mbappe completed a hat-trick (2 goals in 97 seconds). Argentina won 4-2 on penalties." },
+        { title: "GIS Power", text: "ArcGIS transforms raw coordinates into spatial intelligence: heatmaps, Voronoi territories, DBSCAN clusters, KDE pressure zones, and directional flow — the same techniques used in urban planning and environmental science." }
+      ];
+      document.getElementById("key-insights").innerHTML = insights.map(i => `<div class="insight-card"><h4>${i.title}</h4><p>${i.text}</p></div>`).join("");
     }
 
     // ── Player list ──
     function renderPlayerList() {
-      const argContainer = document.getElementById("arg-players");
-      const fraContainer = document.getElementById("fra-players");
-
       lineups.forEach(team => {
         const isArg = team.team_name === "Argentina";
-        const container = isArg ? argContainer : fraContainer;
+        const container = document.getElementById(isArg ? "arg-players" : "fra-players");
+        const counts = {};
+        allEvents.filter(e => e.team?.name === team.team_name && e.player?.name).forEach(ev => { counts[ev.player.name] = (counts[ev.player.name] || 0) + 1; });
 
-        const playerEvents = {};
-        allEvents.filter(e => e.team?.name === team.team_name).forEach(ev => {
-          if (ev.player?.name) {
-            playerEvents[ev.player.name] = (playerEvents[ev.player.name] || 0) + 1;
-          }
-        });
-
-        container.innerHTML = team.lineup.map(p => {
-          const count = playerEvents[p.player_name] || 0;
-          const jersey = p.jersey_number;
-          const pos = p.positions?.[0]?.position || "Unknown";
-          return `
-            <div class="player-card" data-player="${p.player_name}">
-              <div class="jersey ${isArg ? 'arg-jersey' : 'fra-jersey'}">${jersey}</div>
-              <div class="info">
-                <div class="name">${p.player_name}</div>
-                <div class="pos">${pos}</div>
-              </div>
-              <div class="events-count">${count}</div>
-            </div>
-          `;
-        }).join("");
+        container.innerHTML = team.lineup.map(p => `
+          <div class="player-card" data-player="${p.player_name}">
+            <div class="jersey ${isArg ? 'arg-jersey' : 'fra-jersey'}">${p.jersey_number}</div>
+            <div class="info"><div class="name">${p.player_name}</div><div class="pos">${p.positions?.[0]?.position || ""}</div></div>
+            <div class="events-count">${counts[p.player_name] || 0}</div>
+          </div>`).join("");
       });
 
-      // Click handlers
       document.querySelectorAll(".player-card").forEach(card => {
         card.addEventListener("click", () => {
           const name = card.dataset.player;
@@ -864,57 +1125,46 @@
 
     function showPlayerDetail(name) {
       document.getElementById("detail-panel").collapsed = false;
-      const pEvents = allEvents.filter(e => e.player?.name === name);
-      const team = pEvents[0]?.team?.name || "";
-      const passes = pEvents.filter(e => e.type?.name === "Pass");
-      const successPasses = passes.filter(e => !e.pass?.outcome?.name);
-      const shots = pEvents.filter(e => e.type?.name === "Shot");
-      const goals = shots.filter(e => e.shot?.outcome?.name === "Goal");
+      const pe = allEvents.filter(e => e.player?.name === name);
+      const team = pe[0]?.team?.name || "";
+      const passes = pe.filter(e => e.type?.name === "Pass"), sp = passes.filter(e => !e.pass?.outcome?.name);
+      const shots = pe.filter(e => e.type?.name === "Shot"), goals = shots.filter(e => e.shot?.outcome?.name === "Goal");
       const xg = shots.reduce((s, e) => s + (e.shot?.statsbomb_xg || 0), 0);
-      const dribbles = pEvents.filter(e => e.type?.name === "Dribble");
-      const successDribbles = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
-      const carries = pEvents.filter(e => e.type?.name === "Carry");
-      const pressures = pEvents.filter(e => e.type?.name === "Pressure");
-
-      const avgX = pEvents.filter(e => e.location).reduce((s, e) => s + e.location[0], 0) / (pEvents.filter(e => e.location).length || 1);
-      const avgY = pEvents.filter(e => e.location).reduce((s, e) => s + e.location[1], 0) / (pEvents.filter(e => e.location).length || 1);
+      const dribbles = pe.filter(e => e.type?.name === "Dribble"), sd = dribbles.filter(e => e.dribble?.outcome?.name === "Complete");
+      const carries = pe.filter(e => e.type?.name === "Carry"), pressures = pe.filter(e => e.type?.name === "Pressure");
+      const withLoc = pe.filter(e => e.location);
+      const avgX = withLoc.reduce((s, e) => s + e.location[0], 0) / (withLoc.length || 1);
+      const avgY = withLoc.reduce((s, e) => s + e.location[1], 0) / (withLoc.length || 1);
 
       document.getElementById("player-detail-content").innerHTML = `
         <div style="text-align:center;margin-bottom:12px;">
-          <div class="jersey ${team === 'Argentina' ? 'arg-jersey' : 'fra-jersey'}" style="width:48px;height:48px;font-size:20px;margin:0 auto 8px;">${pEvents[0]?.player?.name ? '' : ''}</div>
           <h3 style="margin:0;color:#fff;font-size:16px;">${name}</h3>
           <div style="color:#888;font-size:12px;">${team}</div>
         </div>
-
-        <calcite-block heading="Performance Summary" open collapsible>
-          <div class="stat-row"><span class="label">Total Events</span><span class="value">${pEvents.length}</span></div>
-          <div class="stat-row"><span class="label">Passes</span><span class="value">${successPasses.length}/${passes.length} (${passes.length ? ((successPasses.length / passes.length) * 100).toFixed(0) : 0}%)</span></div>
+        <calcite-block heading="Performance" open collapsible>
+          <div class="stat-row"><span class="label">Events</span><span class="value">${pe.length}</span></div>
+          <div class="stat-row"><span class="label">Passes</span><span class="value">${sp.length}/${passes.length} (${passes.length ? ((sp.length / passes.length) * 100).toFixed(0) : 0}%)</span></div>
           <div class="stat-row"><span class="label">Shots</span><span class="value">${shots.length}</span></div>
           <div class="stat-row"><span class="label">Goals</span><span class="value">${goals.length}</span></div>
           <div class="stat-row"><span class="label">xG</span><span class="value">${xg.toFixed(3)}</span></div>
-          <div class="stat-row"><span class="label">Dribbles</span><span class="value">${successDribbles.length}/${dribbles.length}</span></div>
+          <div class="stat-row"><span class="label">Dribbles</span><span class="value">${sd.length}/${dribbles.length}</span></div>
           <div class="stat-row"><span class="label">Pressures</span><span class="value">${pressures.length}</span></div>
           <div class="stat-row"><span class="label">Carries</span><span class="value">${carries.length}</span></div>
         </calcite-block>
-
         <calcite-block heading="Spatial Profile" open collapsible>
-          <div class="stat-row"><span class="label">Avg. Position</span><span class="value">(${avgX.toFixed(1)}, ${avgY.toFixed(1)})</span></div>
+          <div class="stat-row"><span class="label">Avg Position</span><span class="value">(${avgX.toFixed(1)}, ${avgY.toFixed(1)})</span></div>
           <div class="stat-row"><span class="label">Zone</span><span class="value">${avgX < 40 ? "Defensive Third" : avgX < 80 ? "Middle Third" : "Attacking Third"}</span></div>
-          <div style="font-size:11px;color:#888;padding:8px 0;">Click "Heatmap" in Filters to see this player's spatial footprint on the pitch.</div>
         </calcite-block>
-
         <calcite-block heading="Key Moments" open collapsible>
           ${goals.map(g => `<div class="insight-card"><h4>GOAL — ${g.minute}'</h4><p>${g.shot?.technique?.name || ""} ${g.shot?.body_part?.name || ""}</p></div>`).join("")}
           ${shots.filter(s => s.shot?.outcome?.name !== "Goal").slice(0, 3).map(s => `<div class="insight-card"><h4>Shot — ${s.minute}'</h4><p>${s.shot?.outcome?.name} (xG: ${(s.shot?.statsbomb_xg || 0).toFixed(3)})</p></div>`).join("")}
-        </calcite-block>
-      `;
+        </calcite-block>`;
     }
 
-    // ── Action bar panel switching ──
+    // ── Panel switching ──
     function setupPanelSwitching() {
       const actions = document.querySelectorAll("calcite-action-bar calcite-action");
       const panels = document.querySelectorAll("calcite-shell-panel[slot='panel-start'] calcite-panel");
-
       actions.forEach(action => {
         action.addEventListener("click", () => {
           const targetId = action.dataset.panel;
@@ -922,21 +1172,27 @@
           actions.forEach(a => a.active = a.dataset.panel === targetId);
         });
       });
-
-      // Default: show match info
       actions[0].active = true;
     }
 
-    // ── Filter event handlers ──
+    // ── Filter handlers (FIXED) ──
     function setupFilters() {
-      document.getElementById("team-filter").addEventListener("calciteSegmentedControlChange", updateVisualization);
-      ["filter-pass", "filter-shot", "filter-dribble", "filter-tackle", "filter-carry"].forEach(id => {
-        document.getElementById(id).addEventListener("calciteSwitchChange", updateVisualization);
+      // Team filter — use .value property which is always reliable
+      document.getElementById("team-filter").addEventListener("calciteSegmentedControlChange", (e) => {
+        currentTeamFilter = e.target.value || "all";
+        console.log("Team filter changed to:", currentTeamFilter);
+        updateVisualization();
       });
-      document.getElementById("time-slider").addEventListener("calciteSliderChange", updateVisualization);
+
+      ["filter-pass", "filter-shot", "filter-dribble", "filter-tackle", "filter-carry"].forEach(id => {
+        document.getElementById(id).addEventListener("calciteSwitchChange", () => updateVisualization());
+      });
+
+      document.getElementById("time-slider").addEventListener("calciteSliderChange", () => updateVisualization());
 
       document.getElementById("viz-mode").addEventListener("calciteSegmentedControlChange", (e) => {
-        currentVizMode = e.target.querySelector("[checked]")?.value || "events";
+        currentVizMode = e.target.value || "events";
+        console.log("Viz mode changed to:", currentVizMode);
         updateVisualization();
       });
 
@@ -946,34 +1202,60 @@
         document.getElementById("detail-panel").collapsed = true;
         updateVisualization();
       });
+
+      // Analytics toggles
+      const analyticsToggles = [
+        ["toggle-voronoi", voronoiLayer],
+        ["toggle-hull", hullLayer],
+        ["toggle-pressure-zones", pressureZoneLayer],
+        ["toggle-clusters", clusterLayer],
+        ["toggle-direction", directionLayer]
+      ];
+
+      analyticsToggles.forEach(([id, layer]) => {
+        document.getElementById(id).addEventListener("calciteSwitchChange", (e) => {
+          layer.visible = e.target.checked;
+          if (e.target.checked) {
+            const filtered = getFilteredEvents();
+            const players = getPlayerAvgPositions(filtered.length > 0 ? filtered : allEvents);
+            if (id === "toggle-voronoi") computeVoronoi(players);
+            if (id === "toggle-hull") computeTeamHulls(filtered.length > 0 ? filtered : allEvents);
+            if (id === "toggle-pressure-zones") computePressureZones(filtered.length > 0 ? filtered : allEvents);
+            if (id === "toggle-clusters") computeClusters(filtered.length > 0 ? filtered : allEvents);
+            if (id === "toggle-direction") computeDirectionalFlow(filtered.length > 0 ? filtered : allEvents);
+          }
+        });
+      });
     }
 
-    // ── Initialize ──
+    // ── Map Init ──
     const map = new Map({
       basemap: null,
-      layers: [pitchLayer, carryLinesLayer, passLinesLayer, shotLinesLayer, passNetworkLayer, eventsLayer, labelsLayer]
+      layers: [pitchLayer, voronoiLayer, pressureZoneLayer, hullLayer, heatmapGraphicsLayer, carryLinesLayer, passLinesLayer, shotLinesLayer,
+               passNetworkLayer, clusterLayer, directionLayer, eventsLayer, labelsLayer]
     });
 
     const view = new MapView({
       container: "viewDiv",
       map,
-      extent: new Extent({ xmin: OX - 8, ymin: OY - 8, xmax: OX + 128, ymax: OY + 88, spatialReference: SR }),
+      extent: new Extent({
+        xmin: OX - 8 * SCALE, ymin: OY - 8 * SCALE,
+        xmax: OX + 128 * SCALE, ymax: OY + 88 * SCALE,
+        spatialReference: SR
+      }),
       background: { color: [15, 35, 20] },
       constraints: {
         rotationEnabled: false,
-        minZoom: 0,
-        maxZoom: 24,
-        geometry: new Extent({ xmin: OX - 15, ymin: OY - 15, xmax: OX + 135, ymax: OY + 95, spatialReference: SR })
+        geometry: new Extent({
+          xmin: OX - 20 * SCALE, ymin: OY - 20 * SCALE,
+          xmax: OX + 140 * SCALE, ymax: OY + 100 * SCALE,
+          spatialReference: SR
+        })
       },
       ui: { components: [] },
-      navigation: { mouseWheelZoomEnabled: true, browserTouchPanEnabled: true },
-      popup: {
-        dockEnabled: true,
-        dockOptions: { buttonEnabled: false, breakpoint: false, position: "bottom-right" }
-      }
+      popup: { dockEnabled: true, dockOptions: { buttonEnabled: false, breakpoint: false, position: "bottom-right" } }
     });
 
-    // Remove Esri attribution for cleaner look on local demo
     view.when(() => {
       const attrib = document.querySelector(".esri-attribution");
       if (attrib) attrib.style.display = "none";
@@ -987,6 +1269,7 @@
         const stats = computeStats();
         renderStats(stats);
         generateInsights(stats);
+        generateSpatialInsights(allEvents);
         renderPlayerList();
         setupPanelSwitching();
         setupFilters();
@@ -997,8 +1280,7 @@
         document.getElementById("loading-overlay").innerHTML = `
           <h2 style="color:#ff5252;">Error Loading Data</h2>
           <p style="color:#ccc;">${err.message}</p>
-          <p style="color:#888;">Make sure you have internet access to fetch StatsBomb open data from GitHub.</p>
-        `;
+          <p style="color:#888;">Ensure internet access to fetch StatsBomb data from GitHub.</p>`;
       }
     })();
   </script>
