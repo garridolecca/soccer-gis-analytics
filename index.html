@@ -229,12 +229,41 @@
     import TextSymbol from "https://js.arcgis.com/4.32/@arcgis/core/symbols/TextSymbol.js";
 
     // ── Coordinate helpers ──
-    // Use a large offset in Web Mercator so we're in a valid range
     const SR = new SpatialReference({ wkid: 3857 });
-    const SCALE = 1000; // 1 pitch unit = 1000 meters in Web Mercator
+    const SCALE = 1000;
     const OX = 0, OY = 0;
     function px(x, y) { return [OX + x * SCALE, OY + y * SCALE]; }
     function pt(x, y) { return new Point({ x: OX + x * SCALE, y: OY + y * SCALE, spatialReference: SR }); }
+
+    // ── Performance: debounce helper ──
+    function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+    // ── Performance: pre-built symbol cache ──
+    const SYM = {
+      passOk:    new SimpleMarkerSymbol({ color: [0, 230, 118, 200], size: 4, outline: { color: [255,255,255,60], width: 0.5 } }),
+      passFail:  new SimpleMarkerSymbol({ color: [255, 82, 82, 200], size: 4, outline: { color: [255,255,255,60], width: 0.5 } }),
+      shot:      new SimpleMarkerSymbol({ color: [255, 215, 64, 200], size: 10, outline: { color: [255,255,255,60], width: 0.5 } }),
+      goal:      new SimpleMarkerSymbol({ color: [255, 110, 64, 255], size: 14, outline: { color: "#fff", width: 2 }, style: "diamond" }),
+      dribble:   new SimpleMarkerSymbol({ color: [64, 196, 255, 200], size: 5, outline: { color: [255,255,255,60], width: 0.5 } }),
+      tackle:    new SimpleMarkerSymbol({ color: [234, 128, 252, 200], size: 5, outline: { color: [255,255,255,60], width: 0.5 } }),
+      carry:     new SimpleMarkerSymbol({ color: [176, 190, 197, 120], size: 3, outline: { color: [255,255,255,60], width: 0.5 } }),
+      linePassOk:   new SimpleLineSymbol({ color: [0, 230, 118, 35], width: 0.8 }),
+      linePassFail: new SimpleLineSymbol({ color: [255, 82, 82, 50], width: 0.8 }),
+      lineShotGoal: new SimpleLineSymbol({ color: [255, 110, 64, 220], width: 3 }),
+      lineShot:     new SimpleLineSymbol({ color: [255, 215, 64, 80], width: 1.5, style: "dash" }),
+      lineCarry:    new SimpleLineSymbol({ color: [176, 190, 197, 35], width: 0.6, style: "dot" }),
+      transparent:  new SimpleFillSymbol({ color: "transparent", outline: { color: "transparent", width: 0 } })
+    };
+
+    function evSymbol(ev) {
+      const t = getEventType(ev);
+      if (t === "pass") return ev.pass?.outcome?.name ? SYM.passFail : SYM.passOk;
+      if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? SYM.goal : SYM.shot;
+      if (t === "dribble") return SYM.dribble;
+      if (t === "tackle") return SYM.tackle;
+      if (t === "carry") return SYM.carry;
+      return SYM.carry;
+    }
 
     // ── Layers ──
     const pitchLayer = new GraphicsLayer({ title: "Pitch" });
@@ -343,60 +372,47 @@
     let currentVizMode = "events";
     let currentTeamFilter = "all";
 
+    // Pre-computed type map for O(1) lookups instead of repeated string comparisons
+    const TYPE_MAP = { "Pass": "pass", "Shot": "shot", "Dribble": "dribble", "Pressure": "tackle", "Tackle": "tackle", "Block": "tackle", "Interception": "tackle", "Ball Recovery": "tackle", "Carry": "carry" };
+
+    // Pre-indexed events (populated after load)
+    let eventTypeCache = new WeakMap();
+
     async function loadData() {
       const [evR, liR] = await Promise.all([fetch(EVENTS_URL), fetch(LINEUPS_URL)]);
       allEvents = await evR.json();
       lineups = await liR.json();
+      // Pre-compute event types once
+      for (let i = 0; i < allEvents.length; i++) {
+        const ev = allEvents[i];
+        const t = TYPE_MAP[ev.type?.name] || null;
+        eventTypeCache.set(ev, t);
+      }
     }
 
-    // ── Event helpers ──
     function getEventType(ev) {
-      const t = ev.type?.name;
-      if (t === "Pass") return "pass";
-      if (t === "Shot") return "shot";
-      if (t === "Dribble") return "dribble";
-      if (t === "Pressure" || t === "Tackle" || t === "Block" || t === "Interception" || t === "Ball Recovery") return "tackle";
-      if (t === "Carry") return "carry";
-      return null;
-    }
-    function evColor(ev) {
-      const t = getEventType(ev);
-      if (t === "pass") return ev.pass?.outcome?.name ? [255, 82, 82, 200] : [0, 230, 118, 200];
-      if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? [255, 110, 64, 255] : [255, 215, 64, 200];
-      if (t === "dribble") return [64, 196, 255, 200];
-      if (t === "tackle") return [234, 128, 252, 200];
-      if (t === "carry") return [176, 190, 197, 120];
-      return [255, 255, 255, 100];
-    }
-    function evSize(ev) {
-      const t = getEventType(ev);
-      if (t === "shot") return ev.shot?.outcome?.name === "Goal" ? 14 : 10;
-      if (t === "pass") return 4;
-      if (t === "carry") return 3;
-      return 5;
+      return eventTypeCache.get(ev) ?? (TYPE_MAP[ev.type?.name] || null);
     }
 
-    // ── Rendering ──
+    // ── Rendering (optimized: batch addMany + cached symbols) ──
     function renderEvents(events) {
       eventsLayer.removeAll();
       passLinesLayer.removeAll();
       shotLinesLayer.removeAll();
       carryLinesLayer.removeAll();
 
-      events.forEach(ev => {
-        if (!ev.location) return;
-        const type = getEventType(ev);
-        if (!type) return;
-        const [x, y] = ev.location;
-        const isGoal = type === "shot" && ev.shot?.outcome?.name === "Goal";
+      const pts = [], passLines = [], shotLines = [], carryLines = [];
 
-        eventsLayer.add(new Graphic({
+      for (let i = 0, len = events.length; i < len; i++) {
+        const ev = events[i];
+        if (!ev.location) continue;
+        const type = getEventType(ev);
+        if (!type) continue;
+        const [x, y] = ev.location;
+
+        pts.push(new Graphic({
           geometry: pt(x, y),
-          symbol: new SimpleMarkerSymbol({
-            color: evColor(ev), size: evSize(ev),
-            outline: isGoal ? { color: "#fff", width: 2 } : { color: [255, 255, 255, 60], width: 0.5 },
-            style: isGoal ? "diamond" : "circle"
-          }),
+          symbol: evSymbol(ev),
           popupTemplate: {
             title: `${ev.player?.name} — ${ev.type?.name}`,
             content: `<b>Team:</b> ${ev.team?.name}<br/><b>Minute:</b> ${ev.minute}'<br/><b>Type:</b> ${ev.type?.name}<br/>
@@ -408,95 +424,128 @@
 
         if (type === "pass" && ev.pass?.end_location) {
           const [ex, ey] = ev.pass.end_location;
-          passLinesLayer.add(new Graphic({
+          passLines.push(new Graphic({
             geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({ color: ev.pass?.outcome?.name ? [255, 82, 82, 50] : [0, 230, 118, 35], width: 0.8 })
+            symbol: ev.pass?.outcome?.name ? SYM.linePassFail : SYM.linePassOk
           }));
         }
         if (type === "shot" && ev.shot?.end_location) {
           const [ex, ey] = ev.shot.end_location;
-          shotLinesLayer.add(new Graphic({
+          const isGoal = ev.shot?.outcome?.name === "Goal";
+          shotLines.push(new Graphic({
             geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({ color: isGoal ? [255, 110, 64, 220] : [255, 215, 64, 80], width: isGoal ? 3 : 1.5, style: isGoal ? "solid" : "dash" })
+            symbol: isGoal ? SYM.lineShotGoal : SYM.lineShot
           }));
         }
         if (type === "carry" && ev.carry?.end_location) {
           const [ex, ey] = ev.carry.end_location;
-          carryLinesLayer.add(new Graphic({
+          carryLines.push(new Graphic({
             geometry: new Polyline({ paths: [[px(x, y), px(ex, ey)]], spatialReference: SR }),
-            symbol: new SimpleLineSymbol({ color: [176, 190, 197, 35], width: 0.6, style: "dot" })
+            symbol: SYM.lineCarry
           }));
         }
-      });
+      }
+
+      // Batch add — single render cycle per layer instead of thousands
+      eventsLayer.addMany(pts);
+      passLinesLayer.addMany(passLines);
+      shotLinesLayer.addMany(shotLines);
+      carryLinesLayer.addMany(carryLines);
     }
 
     // ── Heatmap (Canvas-based KDE — same proven technique as pressure zones) ──
     const heatmapGraphicsLayer = new GraphicsLayer({ title: "Heatmap", visible: false });
+
+    // Pre-compute color LUT for heatmap (256 entries)
+    const HEAT_LUT = new Array(256);
+    for (let i = 0; i < 256; i++) {
+      const ratio = i / 255;
+      let r, g, b;
+      if (ratio < 0.25) { const t = ratio / 0.25; r = 20; g = 20 + t * 100 | 0; b = 120 + t * 135 | 0; }
+      else if (ratio < 0.5) { const t = (ratio - 0.25) / 0.25; r = t * 255 | 0; g = 120 + t * 135 | 0; b = 255 * (1 - t) | 0; }
+      else if (ratio < 0.75) { const t = (ratio - 0.5) / 0.25; r = 255; g = 255 * (1 - t * 0.4) | 0; b = 0; }
+      else { const t = (ratio - 0.75) / 0.25; r = 255; g = 153 * (1 - t) | 0; b = t * 60 | 0; }
+      HEAT_LUT[i] = [r, g, b, 80 + (ratio * 175 | 0)];
+    }
 
     function renderHeatmap(events) {
       heatmapGraphicsLayer.removeAll();
       const evts = events.filter(e => e.location && getEventType(e));
       if (evts.length === 0) return;
 
-      const GRID = 2.5, BW = 8;
-      const grid = [];
+      const GRID = 3, BW = 8, BW2x2 = 2 * BW * BW, CUTOFF = BW * 3;
+      // Pre-bin events into spatial grid for O(1) neighbor lookup
+      const BIN = 10; // bin size
+      const bins = {};
+      for (let i = 0, len = evts.length; i < len; i++) {
+        const ev = evts[i];
+        const bx = ev.location[0] / BIN | 0, by = ev.location[1] / BIN | 0;
+        const key = bx * 100 + by;
+        if (!bins[key]) bins[key] = [];
+        const t = getEventType(ev);
+        bins[key].push({ x: ev.location[0], y: ev.location[1], w: t === "shot" ? 5 : t === "tackle" ? 2 : 1 });
+      }
+
+      const gridCells = [];
+      let maxD = 0;
+      const half = GRID / 2;
+      const binRadius = Math.ceil(CUTOFF / BIN);
 
       for (let gx = 0; gx <= 120; gx += GRID) {
+        const gbx = gx / BIN | 0;
         for (let gy = 0; gy <= 80; gy += GRID) {
           let density = 0;
-          evts.forEach(ev => {
-            const dx = gx - ev.location[0], dy = gy - ev.location[1];
-            const w = getEventType(ev) === "shot" ? 5 : getEventType(ev) === "tackle" ? 2 : 1;
-            density += w * Math.exp(-(dx * dx + dy * dy) / (2 * BW * BW));
-          });
-          grid.push({ x: gx, y: gy, d: density });
+          const gby = gy / BIN | 0;
+          // Only check nearby bins
+          for (let bx = gbx - binRadius; bx <= gbx + binRadius; bx++) {
+            for (let by = gby - binRadius; by <= gby + binRadius; by++) {
+              const bin = bins[bx * 100 + by];
+              if (!bin) continue;
+              for (let j = 0, blen = bin.length; j < blen; j++) {
+                const p = bin[j];
+                const dx = gx - p.x, dy = gy - p.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < CUTOFF * CUTOFF) density += p.w * Math.exp(-d2 / BW2x2);
+              }
+            }
+          }
+          if (density > 0) gridCells.push(gx, gy, density);
+          if (density > maxD) maxD = density;
         }
       }
 
-      const maxD = Math.max(...grid.map(g => g.d));
       if (maxD === 0) return;
+      const invMax = 255 / maxD;
+      const graphics = [];
 
-      grid.forEach(({ x, y, d }) => {
-        const ratio = d / maxD;
-        if (ratio < 0.03) return;
+      for (let i = 0, len = gridCells.length; i < len; i += 3) {
+        const x = gridCells[i], y = gridCells[i + 1], d = gridCells[i + 2];
+        const idx = Math.min(255, d * invMax | 0);
+        if (idx < 8) continue; // skip near-zero
+        const c = HEAT_LUT[idx];
 
-        // Blue → Cyan → Yellow → Red (high contrast against green pitch)
-        let r, g, b;
-        if (ratio < 0.25) {
-          const t = ratio / 0.25;
-          r = 20; g = Math.floor(20 + t * 100); b = Math.floor(120 + t * 135);
-        } else if (ratio < 0.5) {
-          const t = (ratio - 0.25) / 0.25;
-          r = Math.floor(t * 255); g = Math.floor(120 + t * 135); b = Math.floor(255 * (1 - t));
-        } else if (ratio < 0.75) {
-          const t = (ratio - 0.5) / 0.25;
-          r = 255; g = Math.floor(255 * (1 - t * 0.4)); b = 0;
-        } else {
-          const t = (ratio - 0.75) / 0.25;
-          r = 255; g = Math.floor(153 * (1 - t)); b = Math.floor(t * 60);
-        }
-
-        const alpha = Math.floor(80 + ratio * 175);
-        const half = GRID / 2;
-
-        heatmapGraphicsLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: new Polygon({
             rings: [[px(x - half, y - half), px(x + half, y - half), px(x + half, y + half), px(x - half, y + half), px(x - half, y - half)]],
             spatialReference: SR
           }),
-          symbol: new SimpleFillSymbol({ color: [r, g, b, alpha], outline: { color: "transparent", width: 0 } })
+          symbol: new SimpleFillSymbol({ color: c, outline: { color: "transparent", width: 0 } })
         }));
-      });
+      }
+
+      heatmapGraphicsLayer.addMany(graphics);
     }
 
-    // ── Pass Network ──
+    // ── Pass Network (optimized: addMany) ──
     function renderPassNetwork(events) {
       passNetworkLayer.removeAll();
       const pairCounts = {}, playerPos = {};
 
-      events.filter(e => e.type?.name === "Pass" && !e.pass?.outcome?.name && e.location && e.pass?.recipient?.name).forEach(ev => {
+      const passes = events.filter(e => e.type?.name === "Pass" && !e.pass?.outcome?.name && e.location && e.pass?.recipient?.name);
+      for (let i = 0, len = passes.length; i < len; i++) {
+        const ev = passes[i];
         const from = ev.player.name, to = ev.pass.recipient.name, team = ev.team.name;
-        const key = [from, to].sort().join("|||") + "|||" + team;
+        const key = from < to ? from + "|||" + to + "|||" + team : to + "|||" + from + "|||" + team;
         pairCounts[key] = (pairCounts[key] || 0) + 1;
 
         if (!playerPos[from]) playerPos[from] = { x: 0, y: 0, n: 0, team };
@@ -506,15 +555,16 @@
         if (playerPos[to] && ev.pass.end_location) {
           playerPos[to].x += ev.pass.end_location[0]; playerPos[to].y += ev.pass.end_location[1]; playerPos[to].n++;
         }
-      });
+      }
 
+      const graphics = [];
       Object.entries(pairCounts).forEach(([key, count]) => {
         if (count < 3) return;
         const [p1, p2, team] = key.split("|||");
         const a = playerPos[p1], b = playerPos[p2];
         if (!a || !b || !a.n || !b.n) return;
         const isArg = team === "Argentina";
-        passNetworkLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: new Polyline({ paths: [[px(a.x / a.n, a.y / a.n), px(b.x / b.n, b.y / b.n)]], spatialReference: SR }),
           symbol: new SimpleLineSymbol({
             color: isArg ? [117, 170, 219, Math.min(220, 40 + count * 15)] : [170, 196, 232, Math.min(220, 40 + count * 15)],
@@ -527,18 +577,20 @@
         if (!p.n) return;
         const ax = p.x / p.n, ay = p.y / p.n;
         const isArg = p.team === "Argentina";
-        passNetworkLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: pt(ax, ay),
           symbol: new SimpleMarkerSymbol({
             color: isArg ? [117, 170, 219, 230] : [170, 196, 232, 230],
             size: Math.min(18, 8 + p.n * 0.12), outline: { color: "#fff", width: 2 }
           })
         }));
-        passNetworkLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: pt(ax, ay),
           symbol: new TextSymbol({ text: name.split(" ").pop(), color: "#fff", font: { size: 9, weight: "bold" }, yoffset: -16, haloColor: "#000", haloSize: 1.5 })
         }));
       });
+
+      passNetworkLayer.addMany(graphics);
     }
 
     // ═══════════════════════════════════════════════
@@ -559,37 +611,38 @@
       return result;
     }
 
-    // ── Voronoi Tessellation (Fortune's algorithm simplified) ──
+    // ── Voronoi Tessellation (optimized: coarser grid + addMany) ──
     function computeVoronoi(players) {
       voronoiLayer.removeAll();
-      const GRID = 2; // resolution
+      const GRID = 3;
       const cells = {};
-      players.forEach(p => { cells[p.name] = []; });
+      const pLen = players.length;
+      // Pre-extract coords for tight loop
+      const pxArr = new Float64Array(pLen), pyArr = new Float64Array(pLen);
+      const pTeams = [];
+      for (let i = 0; i < pLen; i++) { pxArr[i] = players[i].x; pyArr[i] = players[i].y; pTeams[i] = players[i].team; cells[i] = []; }
 
-      // For each grid point, find nearest player
       for (let gx = 0; gx <= 120; gx += GRID) {
         for (let gy = 0; gy <= 80; gy += GRID) {
-          let minD = Infinity, nearest = null;
-          players.forEach(p => {
-            const d = (gx - p.x) ** 2 + (gy - p.y) ** 2;
-            if (d < minD) { minD = d; nearest = p; }
-          });
-          if (nearest) cells[nearest.name].push([gx, gy]);
+          let minD = Infinity, nearest = 0;
+          for (let i = 0; i < pLen; i++) {
+            const dx = gx - pxArr[i], dy = gy - pyArr[i];
+            const d = dx * dx + dy * dy;
+            if (d < minD) { minD = d; nearest = i; }
+          }
+          cells[nearest].push([gx, gy]);
         }
       }
 
-      // Draw each cell as a polygon using convex hull of grid points
-      Object.entries(cells).forEach(([name, points]) => {
+      const graphics = [];
+      Object.entries(cells).forEach(([idx, points]) => {
         if (points.length < 3) return;
-        const player = players.find(p => p.name === name);
         const hull = convexHull(points);
         if (hull.length < 3) return;
-        const isArg = player.team === "Argentina";
-
+        const isArg = pTeams[idx] === "Argentina";
         const ring = hull.map(([x, y]) => px(x, y));
         ring.push(ring[0]);
-
-        voronoiLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: new Polygon({ rings: [ring], spatialReference: SR }),
           symbol: new SimpleFillSymbol({
             color: isArg ? [117, 170, 219, 30] : [170, 196, 232, 30],
@@ -597,6 +650,7 @@
           })
         }));
       });
+      voronoiLayer.addMany(graphics);
     }
 
     // ── Convex Hull (Graham scan) ──
@@ -623,19 +677,17 @@
     function computeTeamHulls(events) {
       hullLayer.removeAll();
       const players = getPlayerAvgPositions(events);
+      const graphics = [];
 
       ["Argentina", "France"].forEach(team => {
         const teamPlayers = players.filter(p => p.team === team);
         if (teamPlayers.length < 3) return;
-        const pts = teamPlayers.map(p => [p.x, p.y]);
-        const hull = convexHull(pts);
+        const hull = convexHull(teamPlayers.map(p => [p.x, p.y]));
         if (hull.length < 3) return;
         const isArg = team === "Argentina";
+        const ring = hull.map(([x, y]) => px(x, y)); ring.push(ring[0]);
 
-        const ring = hull.map(([x, y]) => px(x, y));
-        ring.push(ring[0]);
-
-        hullLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: new Polygon({ rings: [ring], spatialReference: SR }),
           symbol: new SimpleFillSymbol({
             color: isArg ? [117, 170, 219, 20] : [170, 196, 232, 20],
@@ -643,106 +695,127 @@
           })
         }));
 
-        // Centroid label
         const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
         const cy = hull.reduce((s, p) => s + p[1], 0) / hull.length;
-        // Area calculation (shoelace)
         let area = 0;
-        for (let i = 0; i < hull.length; i++) {
-          const j = (i + 1) % hull.length;
-          area += hull[i][0] * hull[j][1] - hull[j][0] * hull[i][1];
-        }
+        for (let i = 0; i < hull.length; i++) { const j = (i + 1) % hull.length; area += hull[i][0] * hull[j][1] - hull[j][0] * hull[i][1]; }
         area = Math.abs(area) / 2;
 
-        hullLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: pt(cx, cy),
-          symbol: new TextSymbol({
-            text: `${team}\n${area.toFixed(0)} sq units`,
-            color: isArg ? "#75aadb" : "#aac4e8",
-            font: { size: 10, weight: "bold" },
-            haloColor: "#000", haloSize: 1.5
-          })
+          symbol: new TextSymbol({ text: `${team}\n${area.toFixed(0)} sq units`, color: isArg ? "#75aadb" : "#aac4e8", font: { size: 10, weight: "bold" }, haloColor: "#000", haloSize: 1.5 })
         }));
       });
+      hullLayer.addMany(graphics);
     }
 
-    // ── Pressure Zones (Canvas-based KDE rendered as grid polygons) ──
+    // ── Pressure Zones (optimized KDE + addMany) ──
     function computePressureZones(events) {
       pressureZoneLayer.removeAll();
       const pressures = events.filter(e => (e.type?.name === "Pressure" || e.type?.name === "Tackle" || e.type?.name === "Ball Recovery") && e.location);
-
       if (pressures.length === 0) return;
 
-      const GRID = 4;
-      const BANDWIDTH = 8;
-      const densityGrid = [];
+      const GRID = 4, BW = 8, BW2x2 = 2 * BW * BW, CUT = BW * 3, half = GRID / 2;
+      // Spatial bins for fast lookup
+      const BIN = 10, bins = {};
+      for (let i = 0; i < pressures.length; i++) {
+        const loc = pressures[i].location;
+        const key = (loc[0] / BIN | 0) * 100 + (loc[1] / BIN | 0);
+        if (!bins[key]) bins[key] = [];
+        bins[key].push(loc);
+      }
+      const binR = Math.ceil(CUT / BIN);
 
+      const cells = [];
+      let maxD = 0;
       for (let gx = 0; gx <= 120; gx += GRID) {
+        const gbx = gx / BIN | 0;
         for (let gy = 0; gy <= 80; gy += GRID) {
-          let density = 0;
-          pressures.forEach(ev => {
-            const dx = gx - ev.location[0], dy = gy - ev.location[1];
-            const d2 = dx * dx + dy * dy;
-            density += Math.exp(-d2 / (2 * BANDWIDTH * BANDWIDTH));
-          });
-          densityGrid.push({ x: gx, y: gy, density });
+          let d = 0;
+          const gby = gy / BIN | 0;
+          for (let bx = gbx - binR; bx <= gbx + binR; bx++) {
+            for (let by = gby - binR; by <= gby + binR; by++) {
+              const bin = bins[bx * 100 + by];
+              if (!bin) continue;
+              for (let j = 0; j < bin.length; j++) {
+                const dx = gx - bin[j][0], dy = gy - bin[j][1], d2 = dx * dx + dy * dy;
+                if (d2 < CUT * CUT) d += Math.exp(-d2 / BW2x2);
+              }
+            }
+          }
+          if (d > 0) cells.push(gx, gy, d);
+          if (d > maxD) maxD = d;
         }
       }
 
-      const maxD = Math.max(...densityGrid.map(g => g.density));
-
-      densityGrid.forEach(({ x, y, density }) => {
-        const ratio = density / maxD;
-        if (ratio < 0.15) return;
-
-        const alpha = Math.floor(ratio * 150);
-        const r = Math.floor(255 * ratio);
-        const g = Math.floor(100 * (1 - ratio));
-
-        pressureZoneLayer.add(new Graphic({
+      if (maxD === 0) return;
+      const graphics = [];
+      for (let i = 0; i < cells.length; i += 3) {
+        const x = cells[i], y = cells[i + 1], ratio = cells[i + 2] / maxD;
+        if (ratio < 0.15) continue;
+        graphics.push(new Graphic({
           geometry: new Polygon({
-            rings: [[px(x - GRID / 2, y - GRID / 2), px(x + GRID / 2, y - GRID / 2), px(x + GRID / 2, y + GRID / 2), px(x - GRID / 2, y + GRID / 2), px(x - GRID / 2, y - GRID / 2)]],
+            rings: [[px(x - half, y - half), px(x + half, y - half), px(x + half, y + half), px(x - half, y + half), px(x - half, y - half)]],
             spatialReference: SR
           }),
           symbol: new SimpleFillSymbol({
-            color: [r, g, 0, alpha],
+            color: [255 * ratio | 0, 100 * (1 - ratio) | 0, 0, ratio * 150 | 0],
             outline: { color: "transparent", width: 0 }
           })
         }));
-      });
+      }
+      pressureZoneLayer.addMany(graphics);
     }
 
-    // ── DBSCAN Clustering ──
+    // ── DBSCAN Clustering (optimized: squared distance, grid index) ──
     function dbscan(points, eps, minPts) {
-      const labels = new Array(points.length).fill(-1); // -1 = unvisited
+      const n = points.length, eps2 = eps * eps;
+      const labels = new Int16Array(n); // 0 = unvisited, -1 = noise, >0 = cluster
       let clusterId = 0;
+
+      // Grid spatial index
+      const grid = {}, cellSize = eps;
+      for (let i = 0; i < n; i++) {
+        const cx = points[i][0] / cellSize | 0, cy = points[i][1] / cellSize | 0;
+        const key = cx * 1000 + cy;
+        if (!grid[key]) grid[key] = [];
+        grid[key].push(i);
+      }
 
       function regionQuery(idx) {
         const neighbors = [];
-        const p = points[idx];
-        for (let i = 0; i < points.length; i++) {
-          if (i === idx) continue;
-          const dx = p[0] - points[i][0], dy = p[1] - points[i][1];
-          if (Math.sqrt(dx * dx + dy * dy) <= eps) neighbors.push(i);
+        const px0 = points[idx][0], py0 = points[idx][1];
+        const cx = px0 / cellSize | 0, cy = py0 / cellSize | 0;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const cell = grid[(cx + dx) * 1000 + (cy + dy)];
+            if (!cell) continue;
+            for (let j = 0; j < cell.length; j++) {
+              const i = cell[j];
+              if (i === idx) continue;
+              const ddx = px0 - points[i][0], ddy = py0 - points[i][1];
+              if (ddx * ddx + ddy * ddy <= eps2) neighbors.push(i);
+            }
+          }
         }
         return neighbors;
       }
 
-      for (let i = 0; i < points.length; i++) {
-        if (labels[i] !== -1) continue;
+      for (let i = 0; i < n; i++) {
+        if (labels[i] !== 0) continue;
         const neighbors = regionQuery(i);
-        if (neighbors.length < minPts) { labels[i] = 0; continue; } // noise
-
+        if (neighbors.length < minPts) { labels[i] = -1; continue; }
         clusterId++;
         labels[i] = clusterId;
-        const queue = [...neighbors];
-        while (queue.length > 0) {
-          const q = queue.shift();
-          if (labels[q] === 0) labels[q] = clusterId; // was noise
-          if (labels[q] !== -1) continue;
+        const queue = neighbors.slice();
+        let qi = 0;
+        while (qi < queue.length) {
+          const q = queue[qi++];
+          if (labels[q] === -1) labels[q] = clusterId;
+          if (labels[q] !== 0) continue;
           labels[q] = clusterId;
-          const qNeighbors = regionQuery(q);
-          if (qNeighbors.length >= minPts) queue.push(...qNeighbors);
+          const qN = regionQuery(q);
+          if (qN.length >= minPts) { for (let k = 0; k < qN.length; k++) queue.push(qN[k]); }
         }
       }
       return { labels, numClusters: clusterId };
@@ -753,132 +826,88 @@
       const evts = events.filter(e => e.location && getEventType(e) && getEventType(e) !== "carry");
       if (evts.length === 0) return;
 
-      // Sample if too many
       const sampled = evts.length > 500 ? evts.filter((_, i) => i % Math.ceil(evts.length / 500) === 0) : evts;
       const points = sampled.map(e => [e.location[0], e.location[1]]);
-
       const { labels, numClusters } = dbscan(points, 8, 5);
 
-      // Colors for clusters
-      const clusterColors = [
-        [255, 110, 64], [64, 196, 255], [255, 215, 64], [0, 230, 118],
-        [234, 128, 252], [255, 82, 82], [100, 255, 218], [255, 171, 64]
-      ];
+      const clusterColors = [[255,110,64],[64,196,255],[255,215,64],[0,230,118],[234,128,252],[255,82,82],[100,255,218],[255,171,64]];
+      const graphics = [];
 
-      // Draw cluster hulls
       for (let c = 1; c <= numClusters; c++) {
         const clusterPts = points.filter((_, i) => labels[i] === c);
         if (clusterPts.length < 3) continue;
-
         const hull = convexHull(clusterPts);
         if (hull.length < 3) continue;
 
         const color = clusterColors[(c - 1) % clusterColors.length];
-        const ring = hull.map(([x, y]) => px(x, y));
-        ring.push(ring[0]);
+        const ring = hull.map(([x, y]) => px(x, y)); ring.push(ring[0]);
 
-        clusterLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: new Polygon({ rings: [ring], spatialReference: SR }),
-          symbol: new SimpleFillSymbol({
-            color: [...color, 40],
-            outline: { color: [...color, 180], width: 2 }
-          })
+          symbol: new SimpleFillSymbol({ color: [...color, 40], outline: { color: [...color, 180], width: 2 } })
         }));
 
-        // Centroid with label
         const cx = clusterPts.reduce((s, p) => s + p[0], 0) / clusterPts.length;
         const cy = clusterPts.reduce((s, p) => s + p[1], 0) / clusterPts.length;
-        clusterLayer.add(new Graphic({
+        graphics.push(new Graphic({
           geometry: pt(cx, cy),
-          symbol: new TextSymbol({
-            text: `C${c} (${clusterPts.length})`,
-            color, font: { size: 10, weight: "bold" },
-            haloColor: "#000", haloSize: 1.5
-          })
+          symbol: new TextSymbol({ text: `C${c} (${clusterPts.length})`, color, font: { size: 10, weight: "bold" }, haloColor: "#000", haloSize: 1.5 })
         }));
       }
+      clusterLayer.addMany(graphics);
     }
 
-    // ── Directional Flow Analysis ──
+    // ── Directional Flow Analysis (optimized: addMany) ──
     function computeDirectionalFlow(events) {
       directionLayer.removeAll();
       const passes = events.filter(e => e.type?.name === "Pass" && e.location && e.pass?.end_location && !e.pass?.outcome?.name);
 
-      // Divide pitch into zones (6x4 grid)
-      const COLS = 6, ROWS = 4;
-      const ZW = 120 / COLS, ZH = 80 / ROWS;
-      const zones = {};
+      const COLS = 6, ROWS = 4, ZW = 120 / COLS, ZH = 80 / ROWS;
+      const zones = new Array(ROWS * COLS);
+      for (let i = 0; i < zones.length; i++) zones[i] = { dx: 0, dy: 0, count: 0, arg: 0, fra: 0 };
 
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          zones[`${r}_${c}`] = { dx: 0, dy: 0, count: 0, team: {} };
-        }
+      for (let i = 0; i < passes.length; i++) {
+        const ev = passes[i];
+        const [sx, sy] = ev.location, [ex, ey] = ev.pass.end_location;
+        const col = Math.min(COLS - 1, sx / ZW | 0), row = Math.min(ROWS - 1, sy / ZH | 0);
+        const z = zones[row * COLS + col];
+        z.dx += ex - sx; z.dy += ey - sy; z.count++;
+        if (ev.team.name === "Argentina") z.arg++; else z.fra++;
       }
 
-      passes.forEach(ev => {
-        const [sx, sy] = ev.location;
-        const [ex, ey] = ev.pass.end_location;
-        const col = Math.min(COLS - 1, Math.floor(sx / ZW));
-        const row = Math.min(ROWS - 1, Math.floor(sy / ZH));
-        const key = `${row}_${col}`;
-        zones[key].dx += (ex - sx);
-        zones[key].dy += (ey - sy);
-        zones[key].count++;
-        zones[key].team[ev.team.name] = (zones[key].team[ev.team.name] || 0) + 1;
-      });
+      const graphics = [];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const z = zones[r * COLS + c];
+          if (z.count < 5) continue;
+          const cx = (c + 0.5) * ZW, cy = (r + 0.5) * ZH;
+          const avgDx = z.dx / z.count, avgDy = z.dy / z.count;
+          const mag = Math.sqrt(avgDx * avgDx + avgDy * avgDy);
+          if (mag < 1) continue;
 
-      Object.entries(zones).forEach(([key, z]) => {
-        if (z.count < 5) return;
-        const [row, col] = key.split("_").map(Number);
-        const cx = (col + 0.5) * ZW;
-        const cy = (row + 0.5) * ZH;
-        const avgDx = z.dx / z.count;
-        const avgDy = z.dy / z.count;
-        const mag = Math.sqrt(avgDx * avgDx + avgDy * avgDy);
-        if (mag < 1) return;
+          const scale = Math.min(ZW * 0.4, mag * 0.8);
+          const nx = (avgDx / mag) * scale, ny = (avgDy / mag) * scale;
+          const color = z.arg > z.fra ? [117, 170, 219, 200] : [170, 196, 232, 200];
 
-        // Normalize and scale
-        const scale = Math.min(ZW * 0.4, mag * 0.8);
-        const nx = (avgDx / mag) * scale;
-        const ny = (avgDy / mag) * scale;
+          graphics.push(new Graphic({
+            geometry: new Polyline({ paths: [[px(cx - nx / 2, cy - ny / 2), px(cx + nx / 2, cy + ny / 2)]], spatialReference: SR }),
+            symbol: new SimpleLineSymbol({ color, width: Math.min(4, 1 + z.count * 0.03) })
+          }));
 
-        // Dominant team
-        const argCount = z.team["Argentina"] || 0;
-        const fraCount = z.team["France"] || 0;
-        const color = argCount > fraCount ? [117, 170, 219, 200] : [170, 196, 232, 200];
+          const angle = Math.atan2(ny, nx), hl = 2;
+          const tipX = cx + nx / 2, tipY = cy + ny / 2;
+          graphics.push(new Graphic({
+            geometry: new Polygon({ rings: [[px(tipX, tipY), px(tipX - hl * Math.cos(angle - 0.5), tipY - hl * Math.sin(angle - 0.5)), px(tipX - hl * Math.cos(angle + 0.5), tipY - hl * Math.sin(angle + 0.5)), px(tipX, tipY)]], spatialReference: SR }),
+            symbol: new SimpleFillSymbol({ color, outline: { color: "transparent", width: 0 } })
+          }));
 
-        // Arrow line
-        directionLayer.add(new Graphic({
-          geometry: new Polyline({ paths: [[px(cx - nx / 2, cy - ny / 2), px(cx + nx / 2, cy + ny / 2)]], spatialReference: SR }),
-          symbol: new SimpleLineSymbol({ color, width: Math.min(4, 1 + z.count * 0.03) })
-        }));
-
-        // Arrowhead
-        const angle = Math.atan2(ny, nx);
-        const headLen = 2;
-        const tipX = cx + nx / 2, tipY = cy + ny / 2;
-        const lx = tipX - headLen * Math.cos(angle - 0.5);
-        const ly = tipY - headLen * Math.sin(angle - 0.5);
-        const rx = tipX - headLen * Math.cos(angle + 0.5);
-        const ry = tipY - headLen * Math.sin(angle + 0.5);
-
-        directionLayer.add(new Graphic({
-          geometry: new Polygon({ rings: [[px(tipX, tipY), px(lx, ly), px(rx, ry), px(tipX, tipY)]], spatialReference: SR }),
-          symbol: new SimpleFillSymbol({ color, outline: { color: "transparent", width: 0 } })
-        }));
-
-        // Count label
-        directionLayer.add(new Graphic({
-          geometry: pt(cx, cy),
-          symbol: new TextSymbol({
-            text: `${z.count}`,
-            color: [255, 255, 255, 150],
-            font: { size: 8 },
-            yoffset: 10,
-            haloColor: "#000", haloSize: 1
-          })
-        }));
-      });
+          graphics.push(new Graphic({
+            geometry: pt(cx, cy),
+            symbol: new TextSymbol({ text: `${z.count}`, color: [255, 255, 255, 150], font: { size: 8 }, yoffset: 10, haloColor: "#000", haloSize: 1 })
+          }));
+        }
+      }
+      directionLayer.addMany(graphics);
     }
 
     // ── Generate spatial insights ──
@@ -990,42 +1019,48 @@
       });
     }
 
+    let _vizRAF = 0;
     function updateVisualization() {
-      const filtered = getFilteredEvents();
+      cancelAnimationFrame(_vizRAF);
+      _vizRAF = requestAnimationFrame(() => {
+        const filtered = getFilteredEvents();
 
-      eventsLayer.visible = false;
-      passLinesLayer.visible = false;
-      shotLinesLayer.visible = false;
-      carryLinesLayer.visible = false;
-      passNetworkLayer.visible = false;
-      heatmapGraphicsLayer.visible = false;
+        // Hide all viz layers first
+        eventsLayer.visible = false;
+        passLinesLayer.visible = false;
+        shotLinesLayer.visible = false;
+        carryLinesLayer.visible = false;
+        passNetworkLayer.visible = false;
+        heatmapGraphicsLayer.visible = false;
 
-      switch (currentVizMode) {
-        case "events":
-          renderEvents(filtered);
-          eventsLayer.visible = true;
-          passLinesLayer.visible = true;
-          carryLinesLayer.visible = true;
-          break;
-        case "heatmap":
-          renderHeatmap(filtered);
-          heatmapGraphicsLayer.visible = true;
-          break;
-        case "passes":
-          renderPassNetwork(filtered);
-          passNetworkLayer.visible = true;
-          break;
-        case "shots":
-          renderEvents(filtered.filter(e => getEventType(e) === "shot"));
-          eventsLayer.visible = true;
-          shotLinesLayer.visible = true;
-          break;
-      }
+        switch (currentVizMode) {
+          case "events":
+            renderEvents(filtered);
+            eventsLayer.visible = true;
+            passLinesLayer.visible = true;
+            carryLinesLayer.visible = true;
+            break;
+          case "heatmap":
+            renderHeatmap(filtered);
+            heatmapGraphicsLayer.visible = true;
+            break;
+          case "passes":
+            renderPassNetwork(filtered);
+            passNetworkLayer.visible = true;
+            break;
+          case "shots":
+            renderEvents(filtered.filter(e => getEventType(e) === "shot"));
+            eventsLayer.visible = true;
+            shotLinesLayer.visible = true;
+            break;
+        }
 
-      // Update analytics layers if visible
-      if (voronoiLayer.visible || hullLayer.visible || pressureZoneLayer.visible || clusterLayer.visible || directionLayer.visible) {
-        updateAnalytics(filtered);
-      }
+        // Defer analytics to next frame so main viz appears first
+        const hasAnalytics = voronoiLayer.visible || hullLayer.visible || pressureZoneLayer.visible || clusterLayer.visible || directionLayer.visible;
+        if (hasAnalytics) {
+          requestAnimationFrame(() => updateAnalytics(filtered));
+        }
+      });
     }
 
     function updateAnalytics(filtered) {
@@ -1188,6 +1223,9 @@
         document.getElementById(id).addEventListener("calciteSwitchChange", () => updateVisualization());
       });
 
+      // Debounce slider — fires rapidly during drag
+      const debouncedUpdate = debounce(updateVisualization, 150);
+      document.getElementById("time-slider").addEventListener("calciteSliderInput", debouncedUpdate);
       document.getElementById("time-slider").addEventListener("calciteSliderChange", () => updateVisualization());
 
       document.getElementById("viz-mode").addEventListener("calciteSegmentedControlChange", (e) => {
